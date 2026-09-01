@@ -56,6 +56,9 @@ to WhatsApp and email.
 - **UI is rendered only from trusted components.** The server returns a UI schema that
   names a component from the approved allowlist. Never render AI-produced HTML,
   markup, or arbitrary component descriptors.
+- **UI uses semantic design tokens only.** Never a raw palette value in a component —
+  no `violet-500`, no `red-500`, no hex literals. Status is always communicated by
+  colour *and* a text label or icon, never colour alone.
 - **Server secrets never reach the frontend.** Supabase service-role key, Firebase Admin
   credentials, and AI provider keys are server-only. Only `VITE_`-prefixed values are
   client-safe.
@@ -79,6 +82,8 @@ Read the relevant file before working in that area:
   timezone
 - `.claude/rules/ai-pipeline.md` — request flow, intents, confidence and confirmation
   rules, typed tool registry
+- `.claude/rules/design-system.md` — colour tokens for both themes, geometry, spacing,
+  typography (incl. Devanagari), Tailwind wiring, theme switching, component rules
 
 ## Reference documents
 

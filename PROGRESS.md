@@ -32,6 +32,13 @@ Build:
 - [ ] Repo structure
 - [ ] React / Vite / TypeScript
 - [ ] Tailwind / shadcn
+- [ ] Design tokens as CSS variables on `:root` and `.dark`
+- [ ] Tokens wired into the Tailwind theme extension (`darkMode: 'class'`)
+- [ ] Mukta font loaded with both `latin` and `devanagari` subsets; tabular figures
+      verified
+- [ ] Theme switching: system preference on first load, user override persisted,
+      applied pre-paint
+- [ ] Lint rule failing the build on raw palette classes and hex literals in `.tsx`
 - [ ] PWA base
 - [ ] Vercel setup
 - [ ] Firebase Auth
@@ -52,6 +59,7 @@ Acceptance:
 - [ ] Vercel deploy works
 - [ ] Migrations are versioned
 - [ ] No server secret reaches the frontend
+- [ ] Both themes render correctly and no theme flash on load
 
 ## Phase 2 — Core Ask Symora + AI pipeline — 15h — Not started
 
@@ -198,6 +206,14 @@ Trusted V1 UI components:
 - [ ] `ConfirmationCard`
 - [ ] `MessageDraftCard`
 - [ ] `SuggestionChip`
+
+Component rules (see `.claude/rules/design-system.md`):
+
+- [ ] All seven share one `CardShell` — same radius, padding rhythm, and elevation
+- [ ] Status communicated by colour **and** text or icon in every component, never
+      colour alone
+- [ ] `ConfirmationCard` visually distinct from every passive card
+- [ ] Every screen checked in both light and dark themes
 
 - [ ] Avoid a generic dashboard
 
