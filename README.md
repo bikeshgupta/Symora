@@ -8,8 +8,9 @@ and helps you act on it.
 
 ## Status
 
-**Skeleton only.** Project structure and documentation are in place; no feature code has
-been written yet. Phase 1 (foundation, auth, database) has not started.
+**Phase 1 (foundation, auth, database) built, not yet verified live.** The app runs
+end-to-end once real Firebase/Supabase/Vercel credentials are in place; see "Getting
+started" below and [`PROGRESS.md`](PROGRESS.md) for exactly what's left to check off.
 
 See [`PROGRESS.md`](PROGRESS.md) for the phase-by-phase plan and acceptance criteria.
 
@@ -56,10 +57,19 @@ docs/                  requirements, architecture diagram, and ADRs
 
 ## Getting started
 
-Nothing to install yet — the toolchain is set up in Phase 1. When it is:
-
-1. Copy `.env.example` to `.env.local` and fill in the values.
-2. Never give a secret a `VITE_` prefix; that prefix makes a value public.
+1. `npm install` at the repo root (npm workspaces cover `apps/web` and `packages/core`).
+2. Create a Firebase project (Email/Password + Google sign-in enabled) and a Supabase
+   project.
+3. Copy `.env.example` to `.env.local` and fill in the Firebase Web config, the Firebase
+   Admin service account, and the Supabase URL/anon key/service-role key/DB URL. Never
+   give a secret a `VITE_` prefix; that prefix makes a value public.
+4. Apply `supabase/migrations/` to your Supabase project (`supabase db push`, or run the
+   SQL files in order via the Supabase SQL editor).
+5. `npm run dev` starts the frontend only (`apps/web`, via Vite). To exercise `/api/*`
+   locally too, install the Vercel CLI and run `vercel dev` from the repo root instead —
+   it serves both the Vite app and the `api/` serverless functions together.
+6. `npm run typecheck`, `npm run lint`, `npm run test`, and `npm run build` all run
+   across every workspace from the repo root.
 
 ## Privacy
 

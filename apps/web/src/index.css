@@ -1,0 +1,118 @@
+/* Design tokens — .claude/rules/design-system.md. Every color below is space-separated
+   RGB channels (not hex) so Tailwind alpha modifiers like bg-primary/10 work. */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Color — light */
+  --color-primary: 124 58 237;
+  --color-primary-hover: 109 40 217;
+  --color-primary-foreground: 255 255 255;
+  --color-surface: 255 255 255;
+  --color-surface-raised: 245 243 241;
+  --color-background: 251 249 247;
+  --color-border: 232 227 223;
+  --color-text-primary: 42 35 32;
+  --color-text-muted: 107 98 89;
+  --color-overdue: 185 28 28;
+  --color-overdue-surface: 254 242 242;
+  --color-due-soon: 180 83 9;
+  --color-due-soon-surface: 255 251 235;
+  --color-paid: 21 128 61;
+  --color-paid-surface: 240 253 244;
+  --color-neutral-status: 95 88 82;
+  --color-neutral-status-surface: 245 243 241;
+  --color-focus-ring: 124 58 237;
+
+  /* Geometry */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* Shadows — warm near-black tint, not pure black */
+  --shadow-sm: 0 1px 2px rgb(41 32 28 / 0.04), 0 1px 3px rgb(41 32 28 / 0.06);
+  --shadow-md: 0 2px 4px rgb(41 32 28 / 0.04), 0 4px 12px rgb(41 32 28 / 0.08);
+  --shadow-lg: 0 4px 8px rgb(41 32 28 / 0.04), 0 12px 28px rgb(41 32 28 / 0.1);
+
+  /* Spacing — 4px base unit */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Typography */
+  --font-sans: 'Mukta', 'Noto Sans Devanagari', 'Noto Sans', system-ui, -apple-system,
+    'Segoe UI', Roboto, sans-serif;
+  --font-numeric: 'Mukta', ui-monospace, 'SF Mono', 'Roboto Mono', monospace;
+
+  --text-display-size: 30px;
+  --text-display-lh: 38px;
+  --text-title-size: 22px;
+  --text-title-lh: 32px;
+  --text-heading-size: 18px;
+  --text-heading-lh: 28px;
+  --text-body-size: 16px;
+  --text-body-lh: 26px;
+  --text-body-sm-size: 14px;
+  --text-body-sm-lh: 22px;
+  --text-caption-size: 13px;
+  --text-caption-lh: 20px;
+  --text-amount-size: 20px;
+  --text-amount-lh: 28px;
+}
+
+.dark {
+  --color-primary: 167 139 250;
+  --color-primary-hover: 196 181 253;
+  --color-primary-foreground: 26 22 20;
+  --color-surface: 36 31 28;
+  --color-surface-raised: 46 40 37;
+  --color-background: 26 22 20;
+  --color-border: 58 50 46;
+  --color-text-primary: 245 240 236;
+  --color-text-muted: 168 160 154;
+  --color-overdue: 248 113 113;
+  --color-overdue-surface: 58 31 31;
+  --color-due-soon: 251 191 36;
+  --color-due-soon-surface: 58 46 23;
+  --color-paid: 74 222 128;
+  --color-paid-surface: 22 48 31;
+  --color-neutral-status: 154 146 140;
+  --color-neutral-status-surface: 46 40 37;
+  --color-focus-ring: 167 139 250;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-text-primary font-sans text-body;
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    @apply outline-focus-ring outline-2 outline-offset-2;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

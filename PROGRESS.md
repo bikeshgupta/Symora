@@ -25,41 +25,54 @@ verified — not when it is merely written.
 
 ---
 
-## Phase 1 — Foundation / Auth / DB — 10h — Not started
+## Phase 1 — Foundation / Auth / DB — 10h — Built, pending live verification
 
 Build:
 
-- [ ] Repo structure
-- [ ] React / Vite / TypeScript
-- [ ] Tailwind / shadcn
-- [ ] Design tokens as CSS variables on `:root` and `.dark`
-- [ ] Tokens wired into the Tailwind theme extension (`darkMode: 'class'`)
-- [ ] Mukta font loaded with both `latin` and `devanagari` subsets; tabular figures
-      verified
-- [ ] Theme switching: system preference on first load, user override persisted,
+- [x] Repo structure
+- [x] React / Vite / TypeScript
+- [x] Tailwind / shadcn (hand-written shadcn-style primitives — CLI needs network access
+      this session didn't have; same conventions, swap for CLI-generated ones anytime)
+- [x] Design tokens as CSS variables on `:root` and `.dark`
+- [x] Tokens wired into the Tailwind theme extension (`darkMode: 'class'`)
+- [x] Mukta font loaded with both `latin` and `devanagari` subsets (Google Fonts serves
+      both automatically via `unicode-range`); tabular figures **not yet verified** —
+      needs a real browser check
+- [x] Theme switching: system preference on first load, user override persisted,
       applied pre-paint
-- [ ] Lint rule failing the build on raw palette classes and hex literals in `.tsx`
-- [ ] PWA base
-- [ ] Vercel setup
-- [ ] Firebase Auth
-- [ ] Firebase Admin server verification
-- [ ] Supabase project and schema
-- [ ] RLS
-- [ ] Server-only secrets
-- [ ] API error contract
-- [ ] Logging convention
-- [ ] Feature flags
-- [ ] Migrations
+- [x] Lint rule failing the build on raw palette classes and hex literals in `.tsx`
+      (`eslint.config.js`, `local/no-raw-palette`)
+- [x] PWA base (`vite-plugin-pwa`, manifest, svg icons)
+- [ ] Vercel setup — `vercel.json` is written; the user still needs to create/link the
+      actual Vercel project
+- [x] Firebase Auth (client: Google + email/password)
+- [x] Firebase Admin server verification (`api/_middleware/firebase-admin.ts`)
+- [ ] Supabase project and schema — migration SQL is written
+      (`supabase/migrations/0001_create_users.sql`); the user still needs to create the
+      actual Supabase project and apply it
+- [x] RLS (`users` table; see the migration's RLS comment for the reasoning — Firebase
+      auth means the service role does the real filtering, RLS is a deny-by-default
+      safety net for `anon`/`authenticated`)
+- [x] Server-only secrets (`.env.example` already documented this; verified no
+      non-`VITE_` value is read from `apps/web`)
+- [x] API error contract (`api/_middleware/errors.ts`)
+- [x] Logging convention (`api/_middleware/logger.ts`)
+- [x] Feature flags (`packages/core/src/config/feature-flags.ts`)
+- [x] Migrations (`supabase/migrations/0001_create_users.sql`, versioned, forward-only)
 
-Acceptance:
+Acceptance — none of these are checked yet; they need real Firebase/Supabase/Vercel
+credentials and a live run, which this session couldn't provision:
 
 - [ ] Login works
 - [ ] `/api/me` returns the verified user
-- [ ] User A cannot query User B
+- [ ] User A cannot query User B (only one resource, `/api/me`, exists so far — this
+      gets a real test once Phase 4 adds multi-row resources)
 - [ ] Vercel deploy works
-- [ ] Migrations are versioned
-- [ ] No server secret reaches the frontend
-- [ ] Both themes render correctly and no theme flash on load
+- [x] Migrations are versioned
+- [x] No server secret reaches the frontend (`apps/web` only reads `VITE_`-prefixed env
+      vars; server secrets live in `api/`/`packages/core`, never imported by `apps/web`)
+- [ ] Both themes render correctly and no theme flash on load — needs a real browser
+      check
 
 ## Phase 2 — Core Ask Symora + AI pipeline — 15h — Not started
 
