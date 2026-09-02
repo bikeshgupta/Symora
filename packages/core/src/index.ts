@@ -1,4 +1,11 @@
 export * from './types';
 export * from './config/feature-flags';
 export * from './repositories';
-export type * from './adapters';
+export * from './adapters';
+export * from './ai';
+export * as commitmentsService from './domain/commitments/commitments-service';
+export * as tasksService from './domain/tasks/tasks-service';
+export * as remindersService from './domain/reminders/reminders-service';
+export * as financeService from './domain/finance/finance-service';
+export * as memoryService from './domain/memory/memory-service';
+export * from './domain/drafting/draft-service';

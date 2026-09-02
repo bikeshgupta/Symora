@@ -3,6 +3,7 @@ import { useMe } from '@/hooks/useMe';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { ChatPanel } from '@/components/ChatPanel';
 
 export function HomePage() {
   const { signOutUser } = useAuth();
@@ -49,6 +50,8 @@ export function HomePage() {
             </dl>
           )}
         </Card>
+
+        <ChatPanel />
       </div>
     </main>
   );

@@ -8,9 +8,10 @@ and helps you act on it.
 
 ## Status
 
-**Phase 1 (foundation, auth, database) built, not yet verified live.** The app runs
-end-to-end once real Firebase/Supabase/Vercel credentials are in place; see "Getting
-started" below and [`PROGRESS.md`](PROGRESS.md) for exactly what's left to check off.
+**Phases 1–2 (foundation/auth/database, and the Ask Symora chat + AI pipeline) built,
+not yet verified live.** The app runs end-to-end once real Firebase/Supabase/Vercel/
+OpenAI credentials are in place; see "Getting started" below and
+[`PROGRESS.md`](PROGRESS.md) for exactly what's left to check off.
 
 See [`PROGRESS.md`](PROGRESS.md) for the phase-by-phase plan and acceptance criteria.
 
@@ -58,10 +59,12 @@ docs/                  requirements, architecture diagram, and ADRs
 ## Getting started
 
 1. `npm install` at the repo root (npm workspaces cover `apps/web` and `packages/core`).
-2. Create a Firebase project (Email/Password + Google sign-in enabled) and a Supabase
-   project.
+2. Create a Firebase project (Email/Password + Google sign-in enabled), a Supabase
+   project, and an OpenAI API key.
 3. Copy `.env.example` to `.env.local` and fill in the Firebase Web config, the Firebase
-   Admin service account, and the Supabase URL/anon key/service-role key/DB URL. Never
+   Admin service account, the Supabase URL/anon key/service-role key/DB URL, and
+   `OPENAI_API_KEY` + `AI_MODEL_CHEAP`/`AI_MODEL_STRONG` (any current OpenAI chat model
+   id with tool-calling support — Ask Symora only uses the cheap tier so far). Never
    give a secret a `VITE_` prefix; that prefix makes a value public.
 4. Apply `supabase/migrations/` to your Supabase project (`supabase db push`, or run the
    SQL files in order via the Supabase SQL editor).

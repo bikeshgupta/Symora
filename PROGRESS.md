@@ -74,36 +74,54 @@ credentials and a live run, which this session couldn't provision:
 - [ ] Both themes render correctly and no theme flash on load — needs a real browser
       check
 
-## Phase 2 — Core Ask Symora + AI pipeline — 15h — Not started
+## Phase 2 — Core Ask Symora + AI pipeline — 15h — Built, pending live verification
 
 Build:
 
-- [ ] Ask Symora text input
-- [ ] Basic chat history
-- [ ] AIProvider abstraction
-- [ ] Language detection
-- [ ] Domain routing
-- [ ] Intent / entity extraction
-- [ ] Confidence handling
-- [ ] Typed tool registry
-- [ ] Structured response format
+- [x] Ask Symora text input (`apps/web/src/components/ChatPanel.tsx`, in `HomePage`)
+- [x] Basic chat history (`conversations`/`messages` tables + `/api/chat`)
+- [x] AIProvider abstraction — real OpenAI implementation
+      (`packages/core/src/adapters/openai-provider.ts`), model ids read from
+      `AI_MODEL_CHEAP`/`AI_MODEL_STRONG` so this file doesn't go stale as models change
+- [x] Language detection (`ai/orchestrator/language.ts`, heuristic — Devanagari range +
+      a romanized-Hindi function-word list, no AI call)
+- [x] Domain routing + intent/entity extraction — one structured call via native tool
+      calling (`ai/orchestrator/intent-extraction.ts`)
+- [x] Confidence handling (`ai/orchestrator/confidence-risk.ts` — the two independent
+      gates from the rules file, unit tested)
+- [x] Typed tool registry (`ai/tools/registry.ts`, all 12 intents, Zod-validated,
+      no tool accepts `user_id`)
+- [x] Structured response format (`{ data: { conversationId, message, ui } }`; `ui` is
+      typed against the eventual Phase 6 allowlist but only ever a functional
+      `confirmation-prompt` stand-in for now — the real `ConfirmationCard` is Phase 6)
 
-Initial intents:
+Also required to make the acceptance examples actually work (see PROGRESS/plan note):
+`commitments`, `financial_obligations`, `financial_instances`, and `memories` tables
+(migrations `0002`–`0004`) and their deterministic domain services, including the
+finance-rules.md idempotency/due-day-clamping/no-floating-point rules — unit tested.
+Dedicated REST endpoints for these (`/api/commitments`, `/api/finance`, ...) are still
+Phase 4 — only `/api/chat` exists so far.
 
-- [ ] `create_commitment`
-- [ ] `create_task`
-- [ ] `create_reminder`
-- [ ] `create_financial_obligation`
-- [ ] `mark_paid`
-- [ ] `mark_done`
-- [ ] `reschedule`
-- [ ] `list_pending`
-- [ ] `calculate_monthly_requirement`
-- [ ] `remember_preference`
-- [ ] `draft_message`
-- [ ] `interpret_pasted_message`
+Initial intents — all twelve are registered and routed through the pipeline above:
 
-Acceptance examples:
+- [x] `create_commitment` (important dates)
+- [x] `create_task`
+- [x] `create_reminder`
+- [x] `create_financial_obligation` (always confirms — high-impact write)
+- [x] `mark_paid` (always confirms; idempotent — re-marking the same amount/date is a
+      no-op, a different one is a correction)
+- [x] `mark_done`
+- [x] `reschedule`
+- [x] `list_pending`
+- [x] `calculate_monthly_requirement`
+- [x] `remember_preference` (plain insert — retrieval/aliases/corrections are Phase 3)
+- [x] `draft_message` (both variants in one AI call, per the rules file)
+- [x] `interpret_pasted_message` (always confirms whatever action the pasted text
+      implies, regardless of the nested extraction's own confidence)
+
+Acceptance examples — code path exists for all five, **not yet exercised against a
+live OpenAI/Supabase project** (no `OPENAI_API_KEY`/Supabase project configured in this
+environment):
 
 - [ ] "Home loan 42500 every month on 5th."
 - [ ] "Saturday electrician ko call karna."

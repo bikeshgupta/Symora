@@ -8,6 +8,7 @@
  */
 
 export type * from './ai-provider';
+export { openAiProvider } from './openai-provider';
 export type * from './speech-adapter';
 export type * from './notification-adapter';
 export type * from './messaging-adapter';
