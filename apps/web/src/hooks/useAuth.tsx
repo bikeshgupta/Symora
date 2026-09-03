@@ -14,11 +14,13 @@ import {
   signOut,
   type User,
 } from 'firebase/auth';
-import { firebaseAuth } from '@/lib/firebase';
+import { getFirebaseAuth } from '@/lib/firebase';
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
+  /** Set when Firebase itself failed to initialize (bad/missing VITE_FIREBASE_* env). */
+  initError: string | null;
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string) => Promise<void>;
@@ -30,29 +32,37 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initError, setInitError] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(firebaseAuth, (nextUser) => {
-      setUser(nextUser);
+    try {
+      const unsubscribe = onAuthStateChanged(getFirebaseAuth(), (nextUser) => {
+        setUser(nextUser);
+        setLoading(false);
+      });
+      return unsubscribe;
+    } catch (err) {
+      setInitError(err instanceof Error ? err.message : 'Firebase failed to initialize.');
       setLoading(false);
-    });
-    return unsubscribe;
+      return undefined;
+    }
   }, []);
 
   const value: AuthContextValue = {
     user,
     loading,
+    initError,
     signInWithGoogle: async () => {
-      await signInWithPopup(firebaseAuth, new GoogleAuthProvider());
+      await signInWithPopup(getFirebaseAuth(), new GoogleAuthProvider());
     },
     signInWithEmail: async (email, password) => {
-      await signInWithEmailAndPassword(firebaseAuth, email, password);
+      await signInWithEmailAndPassword(getFirebaseAuth(), email, password);
     },
     signUpWithEmail: async (email, password) => {
-      await createUserWithEmailAndPassword(firebaseAuth, email, password);
+      await createUserWithEmailAndPassword(getFirebaseAuth(), email, password);
     },
     signOutUser: async () => {
-      await signOut(firebaseAuth);
+      await signOut(getFirebaseAuth());
     },
   };
 

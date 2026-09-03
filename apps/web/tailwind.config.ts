@@ -1,9 +1,15 @@
 // Design tokens: .claude/rules/design-system.md § Tailwind wiring.
+import { fileURLToPath, URL } from 'node:url';
 import type { Config } from 'tailwindcss';
+
+// Tailwind resolves `content` globs against process.cwd(), not this file's location —
+// `vercel dev` invokes Vite (and so PostCSS/Tailwind) from the repo root rather than
+// apps/web, so relative globs here would silently match nothing. Anchor them instead.
+const here = fileURLToPath(new URL('.', import.meta.url));
 
 export default {
   darkMode: 'class',
-  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  content: [`${here}index.html`, `${here}src/**/*.{ts,tsx}`],
   theme: {
     extend: {
       colors: {

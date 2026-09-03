@@ -61,7 +61,7 @@ export async function verifyBearerToken(
   const token = extractBearerToken(authorizationHeader);
   try {
     return await getAuth(getFirebaseAdminApp()).verifyIdToken(token);
-  } catch {
-    throw new ApiError('UNAUTHENTICATED', 'Invalid or expired session. Please sign in again.');
+  } catch (err) {
+    throw new ApiError('UNAUTHENTICATED', 'Invalid or expired session. Please sign in again.', err);
   }
 }

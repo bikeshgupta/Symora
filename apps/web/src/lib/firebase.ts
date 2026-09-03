@@ -1,8 +1,12 @@
 /**
  * Firebase client (.claude/rules/auth-security.md: only VITE_-prefixed values reach
- * the browser, and every one of them is public by design). Initializing with blank
- * values must not throw — that would break `vite build` before secrets exist — actual
- * failures surface only when an auth call is attempted.
+ * the browser, and every one of them is public by design). `initializeApp` never
+ * throws even with blank/wrong values, but `getAuth()` validates the key against
+ * Firebase eagerly and throws synchronously if it's missing or rejected — so that call
+ * is deferred to first use (via getFirebaseAuth()) instead of running at module load.
+ * An import-time throw here would crash before React ever mounts, leaving a blank
+ * page with no on-screen indication of why; callers instead catch it and show a
+ * message (see useAuth.tsx).
  */
 
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
@@ -18,4 +22,9 @@ const firebaseConfig = {
 };
 
 const app: FirebaseApp = getApps()[0] ?? initializeApp(firebaseConfig);
-export const firebaseAuth: Auth = getAuth(app);
+let authInstance: Auth | null = null;
+
+export function getFirebaseAuth(): Auth {
+  if (!authInstance) authInstance = getAuth(app);
+  return authInstance;
+}

@@ -3,7 +3,7 @@
  * error contract (.claude/rules/auth-security.md § Errors and logging).
  */
 
-import { firebaseAuth } from './firebase';
+import { getFirebaseAuth } from './firebase';
 
 export class ApiRequestError extends Error {
   readonly code: string;
@@ -18,7 +18,7 @@ export class ApiRequestError extends Error {
 }
 
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const idToken = await firebaseAuth.currentUser?.getIdToken();
+  const idToken = await getFirebaseAuth().currentUser?.getIdToken();
   if (!idToken) {
     throw new ApiRequestError('UNAUTHENTICATED', 'You are signed out.', 'client');
   }

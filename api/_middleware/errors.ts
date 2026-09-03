@@ -27,8 +27,13 @@ export class ApiError extends Error {
   readonly code: ApiErrorCode;
   readonly status: number;
 
-  constructor(code: ApiErrorCode, message: string) {
-    super(message);
+  /**
+   * `cause` is the real underlying reason (a missing env var, a Firebase Admin SDK
+   * error, a database error). It's logged server-side (see handler.ts) but never sent
+   * to the client — `toErrorBody` only ever reads `code`/`message`.
+   */
+  constructor(code: ApiErrorCode, message: string, cause?: unknown) {
+    super(message, cause !== undefined ? { cause } : undefined);
     this.name = 'ApiError';
     this.code = code;
     this.status = STATUS_BY_CODE[code];
@@ -42,5 +47,5 @@ export function toErrorBody(error: ApiError, requestId: string): ApiErrorBody {
 /** Normalizes any thrown value into an ApiError, without leaking internal detail. */
 export function normalizeError(err: unknown): ApiError {
   if (err instanceof ApiError) return err;
-  return new ApiError('INTERNAL_ERROR', 'Something went wrong. Please try again.');
+  return new ApiError('INTERNAL_ERROR', 'Something went wrong. Please try again.', err);
 }

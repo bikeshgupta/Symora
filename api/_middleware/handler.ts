@@ -27,7 +27,14 @@ export function withApiHandler(fn: ApiHandler) {
       const apiError = normalizeError(err);
       // Context couldn't be built (e.g. auth failure), so log without a resolved userId.
       const logger = createLogger({ requestId });
-      logger.error(apiError.message, { code: apiError.code, status: apiError.status });
+      const cause = apiError.cause;
+      logger.error(apiError.message, {
+        code: apiError.code,
+        status: apiError.status,
+        // The client only ever sees apiError.message; `cause` is the real underlying
+        // reason (bad config, a driver error) and stays server-side, log-only.
+        cause: cause instanceof Error ? cause.message : cause !== undefined ? String(cause) : undefined,
+      });
       res.status(apiError.status).json(toErrorBody(apiError, requestId));
     }
   };

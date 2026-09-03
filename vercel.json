@@ -2,7 +2,5 @@
   "buildCommand": "npm run build -w apps/web",
   "outputDirectory": "apps/web/dist",
   "installCommand": "npm install",
-  "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
-  ]
+  "devCommand": "vite --config apps/web/vite.config.ts --port $PORT"
 }
