@@ -123,15 +123,19 @@ Initial intents — all twelve are registered and routed through the pipeline ab
 - [x] `interpret_pasted_message` (always confirms whatever action the pasted text
       implies, regardless of the nested extraction's own confidence)
 
-Acceptance examples — code path exists for all five, **not yet exercised against a
-live OpenAI/Supabase project** (no `OPENAI_API_KEY`/Supabase project configured in this
-environment):
+Acceptance examples — all five now asserted end-to-end **in offline mode**, which is the
+mode the pilot runs in: intent, extracted args and resolved dates, against a fixed clock,
+with no provider and no network (`ai/offline/offline-corpus.test.ts`). Still not
+exercised against a live model or a live Supabase project.
 
-- [ ] "Home loan 42500 every month on 5th."
-- [ ] "Saturday electrician ko call karna."
-- [ ] "Remind me 2 days before every bill."
-- [ ] "This month what all is pending?"
-- [ ] "Home loan kal pay kar diya."
+- [x] "Home loan 42500 every month on 5th." → `create_financial_obligation`, "Home loan",
+      ₹42,500, due day 5, monthly
+- [x] "Saturday electrician ko call karna." → `create_task`, "electrician call",
+      2026-09-12
+- [x] "Remind me 2 days before every bill." → `create_reminder`, "bill", 2 lead days
+- [x] "This month what all is pending?" → `list_pending`, ALL
+- [x] "Home loan kal pay kar diya." → `mark_paid`, "Home loan", yesterday
+- [ ] The same five through a live model — Phase 9, once a key is added
 
 ## Phase 3 — Personal memory — 12h — Done
 
@@ -273,6 +277,14 @@ Component rules (see `.claude/rules/design-system.md`):
       required prop, so a bare coloured dot cannot be built
 - [x] `ConfirmationCard` visually distinct — the 2px primary border via CardShell's
       `gated` emphasis, which nothing else uses
+- [x] `ConfirmationCard` lets the user correct a misparse before approving it. Each field
+      now carries the argument key it came from and an editor kind (`text` / `number` /
+      `date`, an allowlist like the component names themselves), so an edit can be written
+      back into the tool call. Extraction is **not** re-run — the corrected arguments are
+      what the user approves and what executes, and the server validates them against the
+      same tool schema, which it already did for every confirmation. Added because offline
+      parsing is pattern-based: a wrong account name should cost one edit, not a retyped
+      sentence and a second guess.
 - [ ] Every screen checked in both light and dark themes — **needs a real browser**;
       tokens are wired, but no one has looked at it
 
@@ -379,6 +391,27 @@ Substituted without a key:
 - [x] The UI says which mode it is in (`ModeBanner`), rather than letting a pilot user
       conclude the understanding is simply poor.
 
+Audited against the code rather than the checklist, and fixed:
+
+- [x] `draft_message` reached through a chat turn went straight to the provider in every
+      mode — `handleDraftMessage` in `ai/tools/registry.ts` never consulted `getAiMode()`,
+      so with no key it threw out of `runTool` and 500'd `/api/chat`, while the identical
+      request through `/api/drafts` was answered from templates. It now takes the same
+      offline path.
+- [x] A configured-but-failing provider had no path at all: the error escaped `/api/chat`
+      as a 500, which is worse than configuring nothing. Extraction now falls back to the
+      rule parser (`ai/orchestrator/resilient-extraction.ts`), logs the real cause, and
+      says so in the reply rather than blaming the user's phrasing.
+- [x] Structure the parsers had already consumed was surviving into user-visible titles:
+      "Home loan 42500 every month on 5th" produced an account named "Home loan month
+      5th", and "Kal doctor appointment hai" a task titled with its own date. `cleanTitle`
+      stripped the canonical phrase case-sensitively and only once, so a capitalised "Kal"
+      never matched; the due day and lead time had no stripper at all. Fixed with
+      `stripPhrase`, `stripDueDay` and `stripLeadDays`, and locked in by the corpus test.
+- [x] Blank env vars read as zero rather than absent — `AI_REQUEST_TIMEOUT_MS=` became a
+      0 ms SDK timeout that would abort every request the moment a key was added
+      (`readTimeoutMs` in `adapters/openai-provider.ts`).
+
 Known limits of offline mode, stated rather than hidden:
 
 - Memory does not inform extraction — the rule parser matches patterns, not context, so
@@ -419,7 +452,7 @@ Follow-ups recorded during earlier phases:
 - [ ] Integration test for the memory repository against a real database — the Phase 3
       unit tests cover the pure decision logic, not the queries.
 - [ ] Cross-user access test for `/api/memories` and `/api/memories/:id`
-- [ ] The whole API is one serverless function (`api/[[...route]].ts`) to stay under
+- [ ] The whole API is one serverless function (`api/index.ts`) to stay under
       Vercel's Hobby-plan limit of twelve. On a paid plan the handlers in `api/_routes/`
       could go back to file-based routing; the route table makes either shape cheap.
 - [ ] Web Push delivery for notifications (service worker + VAPID), so reminders reach
