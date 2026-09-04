@@ -93,7 +93,10 @@ docs/                  requirements, architecture diagram, and ADRs
    id with tool-calling support — Ask Symora only uses the cheap tier so far). Never
    give a secret a `VITE_` prefix; that prefix makes a value public.
 4. Apply `supabase/migrations/` to your Supabase project (`supabase db push`, or run the
-   SQL files in order via the Supabase SQL editor).
+   SQL files in order via the Supabase SQL editor). `npm run db:check` reports which
+   migrations the live database is missing — run it after any schema change, and first
+   whenever an endpoint starts returning `INTERNAL_ERROR`, since a table that was never
+   created looks exactly like that from the client.
 5. `npm run dev` starts the frontend only (`apps/web`, via Vite). To exercise `/api/*`
    locally too, install the Vercel CLI and run `vercel dev` from the repo root instead —
    it serves both the Vite app and the `api/` serverless functions together.

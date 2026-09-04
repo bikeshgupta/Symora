@@ -82,4 +82,12 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     },
   },
+  {
+    // Repo tooling: plain Node scripts run by npm, not part of any app bundle. They get
+    // Node's globals, which the browser- and library-oriented configs above do not grant.
+    files: ['scripts/**/*.{js,mjs}'],
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly', fetch: 'readonly', URL: 'readonly' },
+    },
+  },
 );
