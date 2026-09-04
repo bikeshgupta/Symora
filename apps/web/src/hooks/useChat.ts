@@ -57,13 +57,41 @@ export function useChat() {
     [mutation],
   );
 
-  const confirm = useCallback(() => {
-    if (!pendingConfirmation) return;
-    mutation.mutate({
-      text: 'Yes, go ahead.',
-      confirm: { intent: pendingConfirmation.intent, args: pendingConfirmation.args },
-    });
-  }, [mutation, pendingConfirmation]);
+  /**
+   * Confirms the pending proposal, optionally with corrections the user made on the card.
+   *
+   * Edits arrive as strings, because that is what an input produces. They are cast back
+   * to the shape the field was parsed as — a due day stays a number, a date stays an ISO
+   * string — so the tool schema sees the same types it would have from extraction. A cast
+   * that fails is left as the raw string rather than becoming `NaN`: the server's Zod
+   * validation should reject it and say so, which is far better than silently writing a
+   * number nobody typed.
+   *
+   * Only the edited keys are overwritten. Everything else, `confidence` included, is the
+   * originally parsed value, so a correction to one field cannot disturb another.
+   */
+  const confirm = useCallback(
+    (edits: Record<string, string> = {}) => {
+      if (!pendingConfirmation) return;
+
+      const args = { ...(pendingConfirmation.args as Record<string, unknown>) };
+      for (const [key, raw] of Object.entries(edits)) {
+        const editor = pendingConfirmation.fields.find((field) => field.key === key)?.editor;
+        if (editor === 'number') {
+          const parsed = Number(raw);
+          args[key] = Number.isFinite(parsed) ? parsed : raw;
+        } else {
+          args[key] = raw;
+        }
+      }
+
+      mutation.mutate({
+        text: Object.keys(edits).length > 0 ? 'Yes, with those corrections.' : 'Yes, go ahead.',
+        confirm: { intent: pendingConfirmation.intent, args },
+      });
+    },
+    [mutation, pendingConfirmation],
+  );
 
   const cancel = useCallback(() => setPendingConfirmation(null), []);
 

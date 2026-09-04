@@ -6,7 +6,7 @@
  */
 
 import type { IntentName } from '../../types/intents';
-import type { ChatUiSchema } from '../../types/chat';
+import type { ChatFieldEditor, ChatUiSchema } from '../../types/chat';
 import type { ToolResult } from '../tools/registry';
 import { describeCategory, type PasteCategory } from '../../domain/drafting/paste-service';
 import { withHandoff } from '../../domain/drafting/handoff';
@@ -37,6 +37,23 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Which input a field should offer if the user corrects it.
+ *
+ * Read off the parsed value rather than the intent's Zod schema: the schema knows the
+ * declared type but not which fields this particular extraction actually filled, and a
+ * confirmation card only ever shows the ones it filled. Anything the card cannot round
+ * trip — an object, an array — stays text, so an edit still produces a string the tool
+ * schema will validate or reject on its own terms.
+ */
+function editorFor(value: unknown): ChatFieldEditor {
+  if (typeof value === 'number') return 'number';
+  if (typeof value === 'string' && ISO_DATE.test(value)) return 'date';
+  return 'text';
+}
+
 export function composeConfirmation(
   intent: IntentName,
   args: Record<string, unknown>,
@@ -44,7 +61,12 @@ export function composeConfirmation(
 ): ComposedResponse {
   const fields = Object.entries(args)
     .filter(([key]) => key !== 'confidence')
-    .map(([key, value]) => ({ label: humanizeKey(key), value: formatValue(value) }));
+    .map(([key, value]) => ({
+      key,
+      label: humanizeKey(key),
+      value: formatValue(value),
+      editor: editorFor(value),
+    }));
 
   // Naming what was pasted matters: the user needs to see that this proposal came from
   // someone else's text, not from something they asked for directly.
