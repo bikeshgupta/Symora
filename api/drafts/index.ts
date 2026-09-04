@@ -15,6 +15,8 @@ import {
   buildMemoryContext,
   detectLanguage,
   draftMessage,
+  draftMessageOffline,
+  getAiMode,
   getSupabaseServiceClient,
   memoryService,
   openAiProvider,
@@ -36,6 +38,8 @@ const requestSchema = z.object({
 export interface DraftResponseBody {
   variants: DraftVariantWithHandoff[];
   language: 'en' | 'hi' | 'hinglish';
+  /** True when these came from a template rather than a model, so the UI can say so. */
+  templated: boolean;
 }
 
 export default withApiHandler(async (req, res, ctx) => {
@@ -49,29 +53,38 @@ export default withApiHandler(async (req, res, ctx) => {
   const client = getSupabaseServiceClient();
   const now = new Date();
   const language = detectLanguage(parsed.data.context);
+  const aiMode = getAiMode();
 
   // What Symora already knows about the recipient sets the tone — that a landlord is
   // formal, that "mummy" is Sunita. Retrieval is scoped to this request, as everywhere.
-  const memories = await memoryService.retrieveRelevant(
-    client,
-    ctx.user.id,
-    {
-      text: `${parsed.data.context} ${parsed.data.recipientRelationship ?? ''}`,
-      intent: 'draft_message',
-    },
-    now,
-    ctx.user.timezone,
-  );
+  // Offline mode fills a template instead of writing prose. Both produce the same two
+  // variants and the same handoff links, so the card and the WhatsApp/email flow are
+  // unchanged — the drafts are just plainer, and the UI says so.
+  const memories =
+    aiMode === 'ai'
+      ? await memoryService.retrieveRelevant(
+          client,
+          ctx.user.id,
+          {
+            text: `${parsed.data.context} ${parsed.data.recipientRelationship ?? ''}`,
+            intent: 'draft_message',
+          },
+          now,
+          ctx.user.timezone,
+        )
+      : [];
 
-  const draft = await draftMessage(
-    openAiProvider,
-    {
-      context: parsed.data.context,
-      recipientRelationship: parsed.data.recipientRelationship,
-    },
-    language,
-    { memoryContext: buildMemoryContext(memories) },
-  );
+  const draftArgs = {
+    context: parsed.data.context,
+    recipientRelationship: parsed.data.recipientRelationship,
+  };
+
+  const draft =
+    aiMode === 'offline'
+      ? draftMessageOffline(draftArgs, language)
+      : await draftMessage(openAiProvider, draftArgs, language, {
+          memoryContext: buildMemoryContext(memories),
+        });
 
   await aiUsageRepository.recordAiUsage(client, {
     userId: ctx.user.id,
@@ -87,6 +100,7 @@ export default withApiHandler(async (req, res, ctx) => {
   const body: ApiSuccessBody<DraftResponseBody> = {
     data: {
       language,
+      templated: aiMode === 'offline',
       variants: withHandoff(draft, {
         phone: parsed.data.recipientPhone,
         email: parsed.data.recipientEmail,

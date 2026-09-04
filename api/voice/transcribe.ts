@@ -13,7 +13,7 @@
  */
 
 import { z } from 'zod';
-import { detectLanguage, openAiSpeechAdapter, type ApiSuccessBody } from '@symora/core';
+import { detectLanguage, getRuntimeCapabilities, openAiSpeechAdapter, type ApiSuccessBody } from '@symora/core';
 import { ApiError } from '../_middleware/errors';
 import { withApiHandler } from '../_middleware/handler';
 
@@ -40,6 +40,16 @@ export interface TranscribeResponseBody {
 export default withApiHandler(async (req, res, ctx) => {
   if (req.method !== 'POST') {
     throw new ApiError('METHOD_NOT_ALLOWED', `${req.method} is not allowed on /api/voice/transcribe.`);
+  }
+
+  // With no provider configured there is no server-side transcription. The client is
+  // told so by /api/me and uses the browser's own speech recogniser instead, so this is
+  // a clear refusal rather than a provider error surfacing as a 500.
+  if (!getRuntimeCapabilities().serverTranscription) {
+    throw new ApiError(
+      'NOT_FOUND',
+      'Server transcription is not configured on this deployment.',
+    );
   }
 
   const parsed = requestSchema.safeParse(req.body);

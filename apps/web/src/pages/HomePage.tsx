@@ -1,5 +1,6 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useHome } from '@/hooks/useHome';
+import { useMe } from '@/hooks/useMe';
 import { useChat } from '@/hooks/useChat';
 import { useUpdateCommitment } from '@/hooks/useCommitments';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,9 @@ import { PastePanel } from '@/components/PastePanel';
 import { DraftPanel } from '@/components/DraftPanel';
 import { FinancePanel } from '@/components/FinancePanel';
 import { CommitmentsPanel } from '@/components/CommitmentsPanel';
+import { NotificationsPanel } from '@/components/NotificationsPanel';
+import { PrivacyPanel } from '@/components/PrivacyPanel';
+import { ModeBanner } from '@/components/ModeBanner';
 
 const GREETING: Record<string, string> = {
   morning: 'Good morning',
@@ -33,6 +37,7 @@ const GREETING: Record<string, string> = {
 export function HomePage() {
   const { signOutUser } = useAuth();
   const { data: home, isLoading, isError, error } = useHome();
+  const { data: me } = useMe();
   const chat = useChat();
   const updateCommitment = useUpdateCommitment();
 
@@ -55,6 +60,8 @@ export function HomePage() {
             </Button>
           </div>
         </header>
+
+        {me?.capabilities && <ModeBanner capabilities={me.capabilities} />}
 
         {isLoading && (
           <CardShell>
@@ -91,11 +98,19 @@ export function HomePage() {
               />
             )}
 
-            <AskSymora chat={chat} suggestions={home.suggestions} />
+            <AskSymora
+              chat={chat}
+              suggestions={home.suggestions}
+              capabilities={me?.capabilities}
+            />
           </>
         )}
 
-        {!home && !isLoading && <AskSymora chat={chat} suggestions={[]} />}
+        {!home && !isLoading && (
+          <AskSymora chat={chat} suggestions={[]} capabilities={me?.capabilities} />
+        )}
+
+        <NotificationsPanel />
 
         <PastePanel chat={chat} />
 
@@ -106,6 +121,8 @@ export function HomePage() {
         <FinancePanel />
 
         <MemoryPanel />
+
+        <PrivacyPanel />
       </div>
     </main>
   );

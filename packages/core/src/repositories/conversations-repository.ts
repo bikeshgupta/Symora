@@ -117,3 +117,35 @@ export async function createMessage(
   }
   return toMessageRecord(data);
 }
+
+/** Every conversation the user owns, newest first. Used by the privacy export. */
+export async function listConversations(
+  client: SupabaseClient,
+  userId: string,
+): Promise<ConversationRecord[]> {
+  const { data, error } = await client
+    .from('conversations')
+    .select()
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .returns<ConversationRow[]>();
+
+  if (error) throw new Error(`Failed to list conversations: ${error.message}`);
+  return (data ?? []).map(toConversationRecord);
+}
+
+/** Every message the user owns. Included in the export so a thread reads in full. */
+export async function listAllMessages(
+  client: SupabaseClient,
+  userId: string,
+): Promise<MessageRecord[]> {
+  const { data, error } = await client
+    .from('messages')
+    .select()
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+    .returns<MessageRow[]>();
+
+  if (error) throw new Error(`Failed to list messages: ${error.message}`);
+  return (data ?? []).map(toMessageRecord);
+}

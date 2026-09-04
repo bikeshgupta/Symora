@@ -5,6 +5,8 @@ import type { DraftVariantWithHandoff } from '@symora/core';
 export interface DraftResponse {
   variants: DraftVariantWithHandoff[];
   language: 'en' | 'hi' | 'hinglish';
+  /** True when the deployment has no AI key and these came from templates. */
+  templated: boolean;
 }
 
 export interface DraftRequest {

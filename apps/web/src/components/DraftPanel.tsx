@@ -134,6 +134,12 @@ export function DraftPanel() {
         </p>
       )}
 
+      {draft.data?.templated && (
+        <p className="mt-3 text-caption text-text-muted">
+          These came from a template rather than a model — edit them before you send.
+        </p>
+      )}
+
       {draft.data && (
         <ul className="mt-4 flex flex-col gap-3">
           {draft.data.variants.map((variant) => (

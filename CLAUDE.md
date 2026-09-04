@@ -67,13 +67,16 @@ to WhatsApp and email.
 
 ## Current status
 
-Phases 1-7 are complete: foundation/auth/DB; the Ask Symora chat pipeline over the
-typed tool registry; personal memory; the commitments umbrella with deterministic
-finance, tasks and reminders; paste-to-Symora, drafting and the WhatsApp/email handoff;
-the personalized home with the seven trusted components on one `CardShell`; and voice
-input with Hindi/Hinglish handling, temporal anchors computed in code, and an NLP
-regression corpus.
-Phase 8 — notifications, usage/quota tracking and privacy basics — is next.
+Phases 1-8 are complete. Phase 9 — testing and hardening — is next.
+
+**Symora runs with no AI provider key.** `getAiMode()` (config/runtime-mode.ts) reads
+configuration only and needs both `OPENAI_API_KEY` and `AI_MODEL_CHEAP` to leave offline
+mode. Offline, the language layer falls back to the rule-based parser in
+`ai/offline/`, drafting to templates, and voice to the browser's Web Speech API; every
+deterministic feature is unchanged. The substitution happens behind the `AIProvider`
+boundary, so adding a key later is configuration, not a rewrite. When adding a feature
+that needs the model, gate it on the mode and give offline a deterministic path or an
+honest message — never a silent failure.
 
 See `PROGRESS.md` for the phase-by-phase checklist and acceptance criteria. Update it
 whenever a phase item is completed.
@@ -112,7 +115,9 @@ api/                   Vercel serverless functions, one folder per API group
   _middleware/         auth middleware, request context, error contract, logger
 packages/core/src/
   domain/              deterministic domain services (memory, commitments, finance,
-                       tasks, reminders, drafting, home, temporal)
+                       tasks, reminders, drafting, home, temporal, notifications,
+                       usage, privacy)
+  ai/offline/          rule-based parser + template drafter used when no AI key is set
   ai/orchestrator/     language detection, routing, intent extraction, confidence
   ai/tools/            typed tool registry
   repositories/        the only layer that issues database queries

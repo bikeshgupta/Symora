@@ -20,6 +20,8 @@ import {
   isHighImpactIntent,
   categorizePastedText,
   decideTurn,
+  extractIntentOffline,
+  getAiMode,
   memoryService,
   needsRelativeDateClarification,
   openAiProvider,
@@ -87,6 +89,11 @@ export default withApiHandler(async (req, res, ctx) => {
   const language = detectLanguage(body.text);
   const now = new Date();
   const source: TurnSource = body.source;
+  // With no provider key configured the rule-based parser stands in for the model. Every
+  // gate, tool and domain service below is identical either way — only the extractor
+  // differs, which is what makes adding a key later a configuration change and not a
+  // rewrite (packages/core/src/config/runtime-mode.ts).
+  const aiMode = getAiMode();
   // Dates the model is allowed to use, computed here rather than by the model.
   const temporal = buildTemporalAnchors(now, ctx.user.timezone);
   const toolCtx = {
@@ -141,15 +148,22 @@ export default withApiHandler(async (req, res, ctx) => {
   // (.claude/rules/ai-pipeline.md: never dump the user's whole memory into the prompt),
   // and only rows currently in effect are considered — a superseded fact must not
   // influence a new answer.
-  const memories = await memoryService.retrieveRelevant(
-    client,
-    ctx.user.id,
-    { text: body.text },
-    now,
-    ctx.user.timezone,
-  );
+  // Only the model path can use retrieved memory — the rule parser matches patterns, not
+  // context — so offline mode skips the query rather than paying for a result it will
+  // discard. Memory itself is unaffected: it is still stored, listed, edited and deleted
+  // exactly as before, it just does not inform offline extraction.
+  const memories =
+    aiMode === 'ai'
+      ? await memoryService.retrieveRelevant(client, ctx.user.id, { text: body.text }, now, ctx.user.timezone)
+      : [];
 
-  const extraction = await extractIntent(openAiProvider, body.text, language, { memories, temporal });
+  const extraction =
+    aiMode === 'offline'
+      ? extractIntentOffline(body.text, language, { temporal })
+      : await extractIntent(openAiProvider, body.text, language, { memories, temporal });
+
+  // Recorded in both modes. An offline turn costs nothing and reports zero tokens, which
+  // is exactly what the usage screen should show — a gap would look like lost data.
   await aiUsageRepository.recordAiUsage(client, {
     userId: ctx.user.id,
     provider: openAiProvider.name,
@@ -178,17 +192,23 @@ export default withApiHandler(async (req, res, ctx) => {
     const pasteCategory = categorizePastedText(pastedText);
     // Re-retrieve against the pasted text itself: what is relevant to "here is a
     // message from my landlord" is rarely what is relevant to the message's contents.
-    const pastedMemories = await memoryService.retrieveRelevant(
-      client,
-      ctx.user.id,
-      { text: pastedText, intent: 'interpret_pasted_message' },
-      now,
-      ctx.user.timezone,
-    );
-    const nested = await extractIntent(openAiProvider, pastedText, language, {
-      memories: pastedMemories,
-      temporal,
-    });
+    const pastedMemories =
+      aiMode === 'ai'
+        ? await memoryService.retrieveRelevant(
+            client,
+            ctx.user.id,
+            { text: pastedText, intent: 'interpret_pasted_message' },
+            now,
+            ctx.user.timezone,
+          )
+        : [];
+    const nested =
+      aiMode === 'offline'
+        ? extractIntentOffline(pastedText, language, { temporal })
+        : await extractIntent(openAiProvider, pastedText, language, {
+            memories: pastedMemories,
+            temporal,
+          });
     await aiUsageRepository.recordAiUsage(client, {
       userId: ctx.user.id,
       provider: openAiProvider.name,

@@ -1,5 +1,6 @@
 export * from './types';
 export * from './config/feature-flags';
+export * from './config/runtime-mode';
 export * from './repositories';
 export * from './adapters';
 export * from './ai';
@@ -28,6 +29,13 @@ export type {
 export type { InstanceState } from './domain/finance/instances';
 export type { RecurrenceRule, DueUrgency } from './domain/commitments/recurrence';
 export * as homeService from './domain/home/home-service';
+export * as notificationService from './domain/notifications/notification-service';
+export * as usageService from './domain/usage/usage-service';
+export * as privacyService from './domain/privacy/privacy-service';
+export type { UsageSummary } from './domain/usage/usage-service';
+export type { DataExport, DeletionResult } from './domain/privacy/privacy-service';
+export type { PlannedNotification } from './domain/notifications/notification-planner';
+export type { NotificationInbox } from './domain/notifications/notification-service';
 export type { HomePayload, AttentionItem, HomeSuggestion } from './domain/home/home-service';
 export {
   buildTemporalAnchors,

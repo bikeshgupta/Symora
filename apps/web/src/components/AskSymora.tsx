@@ -5,6 +5,7 @@ import { CardShell, ConfirmationCard, MessageDraftCard, SuggestionChip } from '@
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 import type { useChat } from '@/hooks/useChat';
 import type { HomeSuggestion } from '@symora/core';
+import type { RuntimeCapabilities } from '@/hooks/useMe';
 import { cn } from '@/lib/cn';
 
 /**
@@ -19,9 +20,11 @@ import { cn } from '@/lib/cn';
 export function AskSymora({
   chat,
   suggestions,
+  capabilities,
 }: {
   chat: ReturnType<typeof useChat>;
   suggestions: HomeSuggestion[];
+  capabilities?: RuntimeCapabilities;
 }) {
   const { messages, pendingConfirmation, draft, sendMessage, confirm, cancel, isSending } = chat;
   const [text, setText] = useState('');
@@ -29,10 +32,13 @@ export function AskSymora({
   // labelled honestly when it is sent.
   const [fromVoice, setFromVoice] = useState(false);
 
-  const voice = useVoiceInput((transcript) => {
-    setText(transcript);
-    setFromVoice(true);
-  });
+  const voice = useVoiceInput(
+    (transcript) => {
+      setText(transcript);
+      setFromVoice(true);
+    },
+    { useServerTranscription: capabilities?.serverTranscription ?? false },
+  );
 
   function submit(value: string, source: 'chat' | 'voice') {
     const trimmed = value.trim();
@@ -130,6 +136,7 @@ export function AskSymora({
         <p className="mt-2 text-caption text-text-muted">
           Listening — press Stop when you&apos;re done. You&apos;ll see what Symora heard before
           anything happens.
+          {voice.usesBrowserRecognition && ' Your browser is doing the listening, on this device.'}
         </p>
       )}
       {voice.state === 'transcribing' && (

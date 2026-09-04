@@ -3,7 +3,11 @@
 Phase-by-phase build tracker. Source of truth for scope and acceptance criteria:
 `docs/Symora_V1_Requirements_and_Architecture_FULL.md`.
 
-**Overall status: Phases 1-7 complete.** Phase 8 is next.
+**Overall status: Phases 1-8 complete.** Phase 9 (testing and hardening) is next.
+
+**Symora runs with no AI provider key.** Every deterministic feature works either way;
+the language layer falls back to a rule-based parser, drafts to templates, and voice to
+the browser's own recogniser. See "Offline mode" below.
 
 | Phase | Status | Estimate |
 | --- | --- | --- |
@@ -15,7 +19,7 @@ Phase-by-phase build tracker. Source of truth for scope and acceptance criteria:
 | 5 — Paste/share + drafting + WhatsApp/email | Done | 10h |
 | 6 — Personalized home + small dynamic UI | Done | 10h |
 | 7 — Voice + Hindi/Hinglish | Done | 10h |
-| 8 — Notifications + usage + privacy basics | Not started | 8h |
+| 8 — Notifications + usage + privacy basics | Done | 8h |
 | 9 — Testing / hardening | Not started | 15–25h |
 
 Total target: ~110–120h.
@@ -304,33 +308,85 @@ NLP regression corpus started at `ai/orchestrator/nlp-corpus.test.ts`, covering 
 phases' acceptance phrases. It already earned its keep: "parso appointment" was being
 detected as English because no marker in it was listed.
 
-## Phase 8 — Notifications + usage + privacy basics — 8h — Not started
+## Phase 8 — Notifications + usage + privacy basics — 8h — Done
 
-Notifications:
+Notifications (`domain/notifications/`, migration 0009, `/api/notifications`):
 
-- [ ] Due payment
-- [ ] Task
-- [ ] Birthday
-- [ ] Reminder
+- [x] Due payment — fires on the due date and every day it stays late; a partial payment
+      is chased for the remainder
+- [x] Task
+- [x] Birthday — via important dates, off the next occurrence rather than the anchor
+- [x] Reminder — honours `leadDays`, so "2 days before" fires on the lead date *and* the
+      due date
 
-Usage:
+Generation is derived from commitments and instances, not queued ahead, and is
+idempotent via a unique `dedupe_key` of (source, type, date). V1 has no scheduler, so
+generation runs on every read of the inbox and the app catches up when opened; a
+background job can call the same service later without producing duplicates.
 
-- [ ] Requests
-- [ ] Tokens
-- [ ] Estimated cost
-- [ ] User allowance
-- [ ] Reset date
+- [ ] Push delivery — **not built.** Notifications are in-app only. Web Push needs a
+      service worker subscription and VAPID keys, which is a deployment decision, not
+      code this phase should have guessed at.
 
-Privacy:
+Usage (`/api/usage`):
 
-- [ ] View memories
-- [ ] Delete memory
-- [ ] Export data
-- [ ] Delete account
-- [ ] Clear data-access wording
-- [ ] Privacy principle honoured: "Symora knows what you intentionally tell, type,
-      paste, or share."
-- [ ] SMS is not read automatically in V1
+- [x] Requests
+- [x] Tokens
+- [x] Estimated cost
+- [x] User allowance — `AI_MONTHLY_REQUEST_ALLOWANCE`; unset means unlimited, not zero
+- [x] Reset date — first of next month in the user's timezone
+
+Privacy (`/api/privacy/export`, `/api/privacy/delete`, `PrivacyPanel`):
+
+- [x] View memories
+- [x] Delete memory
+- [x] Export data — one JSON file, served as a download, opening with a plain statement
+      of what Symora does and does not collect
+- [x] Delete account — one delete cascading from `users` across every table, so it is
+      atomic; requires the user to type DELETE. The Firebase auth user is not removed —
+      that is a separate system and the client signs out instead
+- [x] Clear data-access wording — stated in the panel next to the controls
+- [x] Privacy principle honoured
+- [x] SMS is not read automatically in V1
+
+## Offline mode — running without an AI provider
+
+Added alongside Phase 8 so the app can be piloted before any AI subscription exists.
+`getAiMode()` reads configuration only (never a request) and needs both `OPENAI_API_KEY`
+and `AI_MODEL_CHEAP` to leave offline mode.
+
+Unchanged without a key — these never involved AI:
+
+- [x] Auth, profile, the home screen and its ranking
+- [x] Commitments, tasks, reminders, important dates
+- [x] Finance: obligations, instances, totals, mark paid, overdue
+- [x] Memory: add, list, edit, delete, effective-dated superseding
+- [x] Notifications, usage, export, delete
+- [x] WhatsApp and email handoff links
+
+Substituted without a key:
+
+- [x] Intent extraction → `ai/offline/rule-parser.ts`, a pattern matcher covering the
+      twelve V1 intents in English and Hinglish. It reports honest confidence, so a
+      partial match falls below the threshold and the pipeline asks instead of writing.
+      Its output is validated against the same tool schemas the model path uses.
+- [x] Relative dates and amounts → `ai/offline/date-parser.ts` and `amount-parser.ts`.
+      The amount parser refuses to read a day-of-month or a lead time as money.
+- [x] Message drafting → `ai/offline/template-drafter.ts`. Two variants, same handoff,
+      and the UI says they are templates.
+- [x] Voice → the browser's Web Speech API, on-device, no key. Chrome and Edge only;
+      Firefox hides the mic rather than offering something that fails.
+- [x] The UI says which mode it is in (`ModeBanner`), rather than letting a pilot user
+      conclude the understanding is simply poor.
+
+Known limits of offline mode, stated rather than hidden:
+
+- Memory does not inform extraction — the rule parser matches patterns, not context, so
+  "mummy ko call karna" does not resolve to Sunita. Memory itself is unaffected.
+- Phrasings far from the documented examples fall through to a message explaining what
+  Symora understands, rather than to a wrong write.
+- Paste interpretation categorises and routes to confirmation, but extracts less from
+  the pasted text than a model would.
 
 ## Phase 9 — Testing / hardening — 15–25h — Not started
 
@@ -363,9 +419,13 @@ Follow-ups recorded during earlier phases:
 - [ ] Integration test for the memory repository against a real database — the Phase 3
       unit tests cover the pure decision logic, not the queries.
 - [ ] Cross-user access test for `/api/memories` and `/api/memories/:id`
-- [ ] Cross-user access tests for the Phase 4-7 endpoints (`/api/commitments`,
+- [ ] Web Push delivery for notifications (service worker + VAPID), so reminders reach
+      a user who does not open the app
+- [ ] Cross-user access tests for the Phase 4-8 endpoints (`/api/commitments`,
       `/api/tasks`, `/api/reminders`, `/api/finance/*`, `/api/drafts`, `/api/home`,
-      `/api/voice/transcribe`)
+      `/api/voice/transcribe`, `/api/notifications`, `/api/usage`, `/api/privacy/*`)
+- [ ] Account deletion leaves the Firebase auth user in place; decide whether to remove
+      it server-side with the Admin SDK
 - [ ] Both themes checked in a real browser, and Mukta's tabular figures verified
 - [ ] Voice tested on a real device — MediaRecorder mime-type support varies most on
       iOS Safari, which is exactly where this has not been run

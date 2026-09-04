@@ -9,3 +9,4 @@ export type { MemoryType, MemorySource, MemoryValue, MemoryRecord, MemoryView } 
 export { MEMORY_TYPES, memoryValueSchema, readMemoryText } from './memory';
 export type * from './conversation';
 export type * from './ai-usage';
+export type * from './notification';
