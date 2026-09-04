@@ -5,6 +5,7 @@ export { decide, CONFIDENCE_THRESHOLD, type PipelineDecision } from './confidenc
 export {
   composeConversational,
   composeConfirmation,
+  composeDraft,
   composeToolResult,
   type ComposedResponse,
 } from './response-composer';

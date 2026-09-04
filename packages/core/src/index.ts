@@ -9,3 +9,21 @@ export * as remindersService from './domain/reminders/reminders-service';
 export * as financeService from './domain/finance/finance-service';
 export * as memoryService from './domain/memory/memory-service';
 export * from './domain/drafting/draft-service';
+export * from './domain/drafting/handoff';
+export * from './domain/drafting/paste-service';
+
+/**
+ * Types the API layer needs by name. The services themselves stay namespaced above so
+ * call sites read as `financeService.getSummary(...)`, but their result types have to be
+ * importable directly for handler response typing.
+ */
+export type {
+  FinanceSummary,
+  InstanceView,
+  CreateObligationResult,
+  MarkPaidResult,
+  MonthlyRequirementResult,
+  UpcomingPayment,
+} from './domain/finance/finance-service';
+export type { InstanceState } from './domain/finance/instances';
+export type { RecurrenceRule, DueUrgency } from './domain/commitments/recurrence';

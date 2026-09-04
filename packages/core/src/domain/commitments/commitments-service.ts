@@ -8,8 +8,21 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import * as commitmentsRepository from '../../repositories/commitments-repository';
-import type { CommitmentRecord, CommitmentType } from '../../types/commitment';
+import type {
+  CommitmentPriority,
+  CommitmentRecord,
+  CommitmentStatus,
+  CommitmentType,
+  CommitmentView,
+} from '../../types/commitment';
 import type { IntentArgs } from '../../types/intents';
+import { localDateString } from '../finance/period';
+import {
+  classifyDueDate,
+  computeFireDate,
+  nextOccurrence,
+  parseRecurrenceRule,
+} from './recurrence';
 
 export type ResolveResult =
   | { status: 'ok'; commitment: CommitmentRecord }
@@ -33,6 +46,37 @@ async function resolveTarget(
   return { status: 'ok', commitment: candidates[0]! };
 }
 
+/** 'YYYY-MM-DD' today in the user's timezone — the as-of instant every view uses. */
+export function today(now: Date, timezone: string): string {
+  return localDateString(now, timezone);
+}
+
+/**
+ * The presentation shape: the stored row plus the dates that are always derived, never
+ * persisted (.claude/rules/finance-rules.md § Determinism — a stored "next occurrence"
+ * or "is overdue" goes stale the moment the day rolls over).
+ *
+ * `nextOccurrence` is where a recurring important date earns its keep: a birthday
+ * anchored at 1990-02-29 reports the right day every year, clamped in non-leap years.
+ */
+export function toView(record: CommitmentRecord, today: string): CommitmentView {
+  const rule = parseRecurrenceRule(record.recurrenceRule);
+  const next = record.dueDate ? nextOccurrence(record.dueDate, rule, today) : null;
+  const effectiveDate = next ?? record.dueDate;
+
+  return {
+    ...record,
+    recurrence: rule,
+    nextOccurrence: next,
+    fireDate: effectiveDate ? computeFireDate(effectiveDate, record.leadDays) : null,
+    urgency: record.status === 'pending' ? classifyDueDate(effectiveDate, today) : null,
+  };
+}
+
+export function toViews(records: CommitmentRecord[], today: string): CommitmentView[] {
+  return records.map((record) => toView(record, today));
+}
+
 export async function createImportantDate(
   client: SupabaseClient,
   userId: string,
@@ -47,6 +91,112 @@ export async function createImportantDate(
     recurrenceRule: args.recurrenceRule ?? null,
     source: 'chat',
   });
+}
+
+export interface CreateCommitmentInput {
+  type: CommitmentType;
+  title: string;
+  description?: string | null;
+  dueDate?: string | null;
+  dueTime?: string | null;
+  recurrenceRule?: string | null;
+  leadDays?: number | null;
+  priority?: CommitmentPriority;
+}
+
+/**
+ * The REST entry point. PAYMENT is refused here on purpose: a payment commitment only
+ * ever exists alongside a financial_obligation, so creating one directly would leave an
+ * obligation-less PAYMENT row that no finance calculation can see
+ * (.claude/rules/finance-rules.md: "An instance is never created without an obligation").
+ * Payments are created through the finance service instead.
+ */
+export async function create(
+  client: SupabaseClient,
+  userId: string,
+  input: CreateCommitmentInput,
+): Promise<CommitmentRecord> {
+  if (input.type === 'PAYMENT') {
+    throw new Error('PAYMENT commitments are created through the finance service.');
+  }
+
+  return commitmentsRepository.createCommitment(client, {
+    userId,
+    type: input.type,
+    title: input.title,
+    description: input.description ?? null,
+    dueDate: input.dueDate ?? null,
+    dueTime: input.dueTime ?? null,
+    recurrenceRule: input.recurrenceRule ?? null,
+    leadDays: input.leadDays ?? null,
+    priority: input.priority ?? 'normal',
+    source: 'manual',
+  });
+}
+
+export interface ListParams {
+  type?: CommitmentType;
+  status?: CommitmentStatus;
+  dueBefore?: string;
+  dueFrom?: string;
+  limit?: number;
+}
+
+export async function list(
+  client: SupabaseClient,
+  userId: string,
+  params: ListParams,
+  now: Date,
+  timezone: string,
+): Promise<CommitmentView[]> {
+  const records = await commitmentsRepository.listCommitments(client, { userId, ...params });
+  return toViews(records, localDateString(now, timezone));
+}
+
+export async function getById(
+  client: SupabaseClient,
+  userId: string,
+  id: string,
+  now: Date,
+  timezone: string,
+): Promise<CommitmentView | null> {
+  const record = await commitmentsRepository.getCommitmentById(client, userId, id);
+  return record ? toView(record, localDateString(now, timezone)) : null;
+}
+
+export interface UpdateInput {
+  title?: string;
+  description?: string | null;
+  dueDate?: string | null;
+  dueTime?: string | null;
+  priority?: CommitmentPriority;
+  status?: CommitmentStatus;
+  leadDays?: number | null;
+  recurrenceRule?: string | null;
+}
+
+export async function update(
+  client: SupabaseClient,
+  userId: string,
+  id: string,
+  input: UpdateInput,
+  now: Date,
+  timezone: string,
+): Promise<CommitmentView | null> {
+  const updated = await commitmentsRepository.updateCommitment(client, userId, id, input);
+  return updated ? toView(updated, localDateString(now, timezone)) : null;
+}
+
+/** Cancels rather than deletes — see cancelCommitment in the repository for why. */
+export async function cancel(
+  client: SupabaseClient,
+  userId: string,
+  id: string,
+  now: Date,
+  timezone: string,
+): Promise<CommitmentView | null> {
+  const cancelled = await commitmentsRepository.cancelCommitment(client, userId, id);
+  return cancelled ? toView(cancelled, localDateString(now, timezone)) : null;
 }
 
 export interface ListPendingParams {

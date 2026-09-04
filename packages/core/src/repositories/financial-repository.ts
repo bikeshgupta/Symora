@@ -220,6 +220,71 @@ export async function updateInstancePaidState(
   return toInstanceRecord(data);
 }
 
+export async function listInstancesForObligation(
+  client: SupabaseClient,
+  userId: string,
+  obligationId: string,
+): Promise<FinancialInstanceRecord[]> {
+  const { data, error } = await client
+    .from('financial_instances')
+    .select()
+    .eq('user_id', userId)
+    .eq('obligation_id', obligationId)
+    .order('period', { ascending: true })
+    .returns<InstanceRow[]>();
+
+  if (error) throw new Error(`Failed to list instances: ${error.message}`);
+  return (data ?? []).map(toInstanceRecord);
+}
+
+export async function listInstancesForPeriod(
+  client: SupabaseClient,
+  userId: string,
+  period: string,
+): Promise<FinancialInstanceRecord[]> {
+  const { data, error } = await client
+    .from('financial_instances')
+    .select()
+    .eq('user_id', userId)
+    .eq('period', period)
+    .returns<InstanceRow[]>();
+
+  if (error) throw new Error(`Failed to list instances for ${period}: ${error.message}`);
+  return (data ?? []).map(toInstanceRecord);
+}
+
+export async function getObligationById(
+  client: SupabaseClient,
+  userId: string,
+  id: string,
+): Promise<FinancialObligationRecord | null> {
+  const { data, error } = await client
+    .from('financial_obligations')
+    .select()
+    .eq('id', id)
+    .eq('user_id', userId)
+    .maybeSingle<ObligationRow>();
+
+  if (error) throw new Error(`Failed to load obligation ${id}: ${error.message}`);
+  return data ? toObligationRecord(data) : null;
+}
+
+export async function getInstanceById(
+  client: SupabaseClient,
+  userId: string,
+  id: string,
+): Promise<FinancialInstanceRecord | null> {
+  const { data, error } = await client
+    .from('financial_instances')
+    .select()
+    .eq('id', id)
+    .eq('user_id', userId)
+    .maybeSingle<InstanceRow>();
+
+  if (error) throw new Error(`Failed to load instance ${id}: ${error.message}`);
+  return data ? toInstanceRecord(data) : null;
+}
+
 export async function listInstancesByStatus(
   client: SupabaseClient,
   userId: string,

@@ -8,6 +8,8 @@
 import type { IntentName } from '../../types/intents';
 import type { ChatUiSchema } from '../../types/chat';
 import type { ToolResult } from '../tools/registry';
+import { describeCategory, type PasteCategory } from '../../domain/drafting/paste-service';
+import { withHandoff } from '../../domain/drafting/handoff';
 
 export interface ComposedResponse {
   text: string;
@@ -35,19 +37,46 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
-export function composeConfirmation(intent: IntentName, args: Record<string, unknown>): ComposedResponse {
+export function composeConfirmation(
+  intent: IntentName,
+  args: Record<string, unknown>,
+  pasteCategory?: PasteCategory,
+): ComposedResponse {
   const fields = Object.entries(args)
     .filter(([key]) => key !== 'confidence')
     .map(([key, value]) => ({ label: humanizeKey(key), value: formatValue(value) }));
 
-  const question = CONFIRMATION_QUESTIONS[intent] ?? 'Go ahead with this?';
+  // Naming what was pasted matters: the user needs to see that this proposal came from
+  // someone else's text, not from something they asked for directly.
+  const question = pasteCategory
+    ? `That looks like ${describeCategory(pasteCategory)}. ${CONFIRMATION_QUESTIONS[intent] ?? 'Go ahead with this?'}`
+    : (CONFIRMATION_QUESTIONS[intent] ?? 'Go ahead with this?');
 
   return {
     text: question,
-    ui: { component: 'confirmation-prompt', props: { question, intent, args, fields } },
+    ui: { component: 'confirmation-prompt', props: { question, intent, args, fields, pasteCategory } },
+  };
+}
+
+/**
+ * The drafting result as a trusted UI schema. The model wrote the message text; it did
+ * not choose the component or build the links — those come from the allowlist and from
+ * the pure link builders in adapters/, so nothing the model emits can become markup.
+ */
+export function composeDraft(draft: { short: string; detailed: string }): ComposedResponse {
+  const variants = withHandoff(draft);
+  return {
+    text: `Short: ${draft.short}\n\nDetailed: ${draft.detailed}`,
+    ui: { component: 'message-draft', props: { variants } },
   };
 }
 
 export function composeToolResult(result: ToolResult): ComposedResponse {
+  if (result.intent === 'draft_message' && result.data) {
+    const draft = result.data as { short?: string; detailed?: string };
+    if (typeof draft.short === 'string' && typeof draft.detailed === 'string') {
+      return composeDraft({ short: draft.short, detailed: draft.detailed });
+    }
+  }
   return { text: result.summary, ui: null };
 }

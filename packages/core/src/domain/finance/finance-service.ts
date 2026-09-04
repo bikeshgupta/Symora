@@ -11,6 +11,26 @@ import type { FinancialInstanceRecord, FinancialObligationRecord } from '../../t
 import type { IntentArgs } from '../../types/intents';
 import { computeDueDateForPeriod, localDateString, localPeriodString } from './period';
 import { fromMinorUnits, sumMinorUnits } from './money';
+import {
+  addMonthsToPeriod,
+  deriveInstanceState,
+  isOutstanding,
+  missingPeriods,
+  periodsBetween,
+  type InstanceState,
+} from './instances';
+
+/** 'YYYY-MM' for the current month in the user's timezone. */
+export function currentPeriod(now: Date, timezone: string): string {
+  return localPeriodString(now, timezone);
+}
+
+export async function listObligations(
+  client: SupabaseClient,
+  userId: string,
+): Promise<FinancialObligationRecord[]> {
+  return financialRepository.listObligations(client, userId);
+}
 
 export interface CreateObligationResult {
   obligation: FinancialObligationRecord;
@@ -255,4 +275,222 @@ export async function calculateMonthlyRequirement(
   );
 
   return { period: resolvedPeriod, breakdown };
+}
+
+
+export interface InstanceView {
+  instance: FinancialInstanceRecord;
+  obligation: FinancialObligationRecord;
+  state: InstanceState;
+}
+
+/**
+ * Generate this obligation's instances for a bounded window, idempotently.
+ *
+ * finance-rules.md is explicit on both halves: "Instances are generated ... for a
+ * bounded window. Never generate an unbounded series", and "Generating instances must
+ * never overwrite or reset an existing instance's payment state". So the window is
+ * capped (periodsBetween), only gaps are written, and each write goes through
+ * getOrCreateInstanceForPeriod, whose unique (obligation_id, period) constraint is the
+ * real idempotency guarantee under concurrency.
+ *
+ * expected_amount is snapshotted from the obligation at creation, so later editing the
+ * obligation's amount does not rewrite history.
+ */
+export async function generateInstances(
+  client: SupabaseClient,
+  userId: string,
+  obligationId: string,
+  fromPeriod: string,
+  toPeriod: string,
+): Promise<FinancialInstanceRecord[]> {
+  const obligation = await financialRepository.getObligationById(client, userId, obligationId);
+  if (!obligation) return [];
+
+  const existing = await financialRepository.listInstancesForObligation(client, userId, obligationId);
+  const wanted = periodsBetween(fromPeriod, toPeriod);
+  const gaps = missingPeriods(existing.map((instance) => instance.period), wanted);
+
+  const created: FinancialInstanceRecord[] = [];
+  for (const period of gaps) {
+    created.push(
+      await financialRepository.getOrCreateInstanceForPeriod(client, {
+        userId,
+        obligationId,
+        period,
+        expectedAmount: Number(obligation.amount),
+      }),
+    );
+  }
+  return created;
+}
+
+/** Ensures the current period exists for every obligation, then returns this period's rows. */
+async function ensureCurrentPeriod(
+  client: SupabaseClient,
+  userId: string,
+  period: string,
+): Promise<{ obligations: FinancialObligationRecord[]; instances: FinancialInstanceRecord[] }> {
+  const obligations = await financialRepository.listObligations(client, userId);
+  for (const obligation of obligations) {
+    await financialRepository.getOrCreateInstanceForPeriod(client, {
+      userId,
+      obligationId: obligation.id,
+      period,
+      expectedAmount: Number(obligation.amount),
+    });
+  }
+  const instances = await financialRepository.listInstancesForPeriod(client, userId, period);
+  return { obligations, instances };
+}
+
+export interface FinanceSummary {
+  period: string;
+  today: string;
+  requirement: MonthlyRequirementResult;
+  outstanding: { currency: string; totalFormatted: string; count: number }[];
+  overdue: InstanceView[];
+  upcoming: InstanceView[];
+}
+
+/**
+ * One read for the whole finance picture of a period: what is required, what is still
+ * outstanding, what is late, and what is coming.
+ *
+ * Every number here is derived from stored instances at read time — nothing is cached
+ * in a column. That is what makes "the same rows plus the same as-of instant always
+ * produce the same output" true rather than aspirational.
+ */
+export async function getSummary(
+  client: SupabaseClient,
+  userId: string,
+  now: Date,
+  timezone: string,
+  period?: string,
+): Promise<FinanceSummary> {
+  const resolvedPeriod = period ?? localPeriodString(now, timezone);
+  const today = localDateString(now, timezone);
+
+  const { obligations, instances } = await ensureCurrentPeriod(client, userId, resolvedPeriod);
+  const byId = new Map(obligations.map((obligation) => [obligation.id, obligation]));
+
+  const views: InstanceView[] = [];
+  for (const instance of instances) {
+    const obligation = byId.get(instance.obligationId);
+    if (!obligation) continue;
+    views.push({ instance, obligation, state: deriveInstanceState(instance, obligation.dueDay, today) });
+  }
+  views.sort((a, b) => a.state.dueDate.localeCompare(b.state.dueDate));
+
+  const outstandingByCurrency = new Map<string, { amounts: string[]; count: number }>();
+  for (const view of views) {
+    if (!isOutstanding(view.instance.status)) continue;
+    const bucket = outstandingByCurrency.get(view.obligation.currency) ?? { amounts: [], count: 0 };
+    bucket.amounts.push(view.state.outstandingFormatted);
+    bucket.count += 1;
+    outstandingByCurrency.set(view.obligation.currency, bucket);
+  }
+
+  return {
+    period: resolvedPeriod,
+    today,
+    requirement: await calculateMonthlyRequirement(client, userId, now, timezone, resolvedPeriod),
+    outstanding: Array.from(outstandingByCurrency.entries()).map(([currency, bucket]) => ({
+      currency,
+      totalFormatted: fromMinorUnits(sumMinorUnits(bucket.amounts)),
+      count: bucket.count,
+    })),
+    overdue: views.filter((view) => view.state.isOverdue),
+    upcoming: views.filter((view) => !view.state.isOverdue && isOutstanding(view.instance.status)),
+  };
+}
+
+export interface CreateObligationInput {
+  accountName: string;
+  obligationType: FinancialObligationRecord['obligationType'];
+  amount: number;
+  currency: string;
+  dueDay: number;
+  recurrenceRule?: string;
+}
+
+/**
+ * The REST entry point for creating an obligation. Also seeds the next few periods so
+ * "what's coming up" is answerable straight away rather than only after each month is
+ * first touched.
+ */
+export async function createObligationWithWindow(
+  client: SupabaseClient,
+  userId: string,
+  input: CreateObligationInput,
+  now: Date,
+  timezone: string,
+  monthsAhead = 2,
+): Promise<CreateObligationResult> {
+  const result = await createObligation(
+    client,
+    userId,
+    { ...input, recurrenceRule: input.recurrenceRule ?? 'monthly' },
+    now,
+    timezone,
+  );
+
+  const period = localPeriodString(now, timezone);
+  await generateInstances(client, userId, result.obligation.id, period, addMonthsToPeriod(period, monthsAhead));
+
+  return result;
+}
+
+export async function listInstances(
+  client: SupabaseClient,
+  userId: string,
+  period: string,
+  now: Date,
+  timezone: string,
+): Promise<InstanceView[]> {
+  const today = localDateString(now, timezone);
+  const { obligations, instances } = await ensureCurrentPeriod(client, userId, period);
+  const byId = new Map(obligations.map((obligation) => [obligation.id, obligation]));
+
+  return instances
+    .flatMap((instance) => {
+      const obligation = byId.get(instance.obligationId);
+      if (!obligation) return [];
+      return [{ instance, obligation, state: deriveInstanceState(instance, obligation.dueDay, today) }];
+    })
+    .sort((a, b) => a.state.dueDate.localeCompare(b.state.dueDate));
+}
+
+export type MarkInstancePaidResult =
+  | { status: 'not_found' }
+  | { status: 'unchanged'; instance: FinancialInstanceRecord }
+  | { status: 'updated'; instance: FinancialInstanceRecord; wasCorrection: boolean };
+
+/**
+ * Mark one instance paid by id — the button on a payment row, as opposed to the
+ * name-matching chat path in markPaid above. Same idempotency rule either way.
+ */
+export async function markInstancePaid(
+  client: SupabaseClient,
+  userId: string,
+  instanceId: string,
+  input: { amount?: number; paidDate?: string },
+  now: Date,
+  timezone: string,
+): Promise<MarkInstancePaidResult> {
+  const instance = await financialRepository.getInstanceById(client, userId, instanceId);
+  if (!instance) return { status: 'not_found' };
+
+  const amount = input.amount ?? Number(instance.expectedAmount);
+  const paidDate = input.paidDate ?? localDateString(now, timezone);
+  const decision = decidePaidUpdate(instance, amount, paidDate);
+
+  if (decision.action === 'noop') return { status: 'unchanged', instance };
+
+  const updated = await financialRepository.updateInstancePaidState(client, userId, instance.id, {
+    status: decision.status,
+    paidAmount: amount,
+    paidDate,
+  });
+  return { status: 'updated', instance: updated, wasCorrection: decision.wasCorrection };
 }

@@ -5,6 +5,10 @@ import { Card } from '@/components/ui/card';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { ChatPanel } from '@/components/ChatPanel';
 import { MemoryPanel } from '@/components/MemoryPanel';
+import { CommitmentsPanel } from '@/components/CommitmentsPanel';
+import { FinancePanel } from '@/components/FinancePanel';
+import { PastePanel } from '@/components/PastePanel';
+import { DraftPanel } from '@/components/DraftPanel';
 
 export function HomePage() {
   const { signOutUser } = useAuth();
@@ -53,6 +57,14 @@ export function HomePage() {
         </Card>
 
         <ChatPanel />
+
+        <CommitmentsPanel />
+
+        <FinancePanel />
+
+        <PastePanel />
+
+        <DraftPanel />
 
         <MemoryPanel />
       </div>

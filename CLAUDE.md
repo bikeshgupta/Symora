@@ -67,10 +67,12 @@ to WhatsApp and email.
 
 ## Current status
 
-Phases 1-3 are complete: foundation/auth/DB, the Ask Symora chat pipeline over the
-typed tool registry, and personal memory (explicit storage, aliases, corrections,
-effective-dated superseding, relevant-memory retrieval, and the memory screen).
-Phase 4 — commitments, finance, tasks and reminders — is next.
+Phases 1-5 are complete: foundation/auth/DB; the Ask Symora chat pipeline over the
+typed tool registry; personal memory; the commitments umbrella with deterministic
+finance (obligations vs instances, bounded idempotent generation, derived
+overdue/outstanding), tasks, reminders with lead times and recurring important dates;
+and paste-to-Symora, message drafting and the WhatsApp/email handoff.
+Phase 6 — the personalized home and the seven trusted UI components — is next.
 
 See `PROGRESS.md` for the phase-by-phase checklist and acceptance criteria. Update it
 whenever a phase item is completed.

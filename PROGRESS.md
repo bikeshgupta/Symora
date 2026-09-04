@@ -3,7 +3,7 @@
 Phase-by-phase build tracker. Source of truth for scope and acceptance criteria:
 `docs/Symora_V1_Requirements_and_Architecture_FULL.md`.
 
-**Overall status: Phases 1-3 complete.** Phase 4 is next.
+**Overall status: Phases 1-5 complete.** Phase 6 is next.
 
 | Phase | Status | Estimate |
 | --- | --- | --- |
@@ -11,8 +11,8 @@ Phase-by-phase build tracker. Source of truth for scope and acceptance criteria:
 | 1 — Foundation / Auth / DB | Done | 10h |
 | 2 — Core Ask Symora + AI pipeline | Done | 15h |
 | 3 — Personal memory | Done | 12h |
-| 4 — Commitments + finance + tasks/reminders | Not started | 20h |
-| 5 — Paste/share + drafting + WhatsApp/email | Not started | 10h |
+| 4 — Commitments + finance + tasks/reminders | Done | 20h |
+| 5 — Paste/share + drafting + WhatsApp/email | Done | 10h |
 | 6 — Personalized home + small dynamic UI | Not started | 10h |
 | 7 — Voice + Hindi/Hinglish | Not started | 10h |
 | 8 — Notifications + usage + privacy basics | Not started | 8h |
@@ -157,74 +157,84 @@ Not yet verified against a live database: the migration and the repository queri
 not been run against a real Supabase project in this session. See the note in Phase 9
 about a memory-service integration test.
 
-## Phase 4 — Commitments + finance + tasks/reminders — 20h — Not started
+## Phase 4 — Commitments + finance + tasks/reminders — 20h — Done
 
-Commitment umbrella:
+Commitment umbrella — one table, one service, filtered views (`/api/commitments`,
+`/api/tasks`, `/api/reminders`):
 
-- [ ] Payments
-- [ ] Tasks
-- [ ] Reminders
-- [ ] Important dates
+- [x] Payments — created through the finance service only; `commitmentsService.create`
+      refuses a bare PAYMENT so no obligation-less payment row can exist
+- [x] Tasks
+- [x] Reminders
+- [x] Important dates
 
-Finance V1:
+Finance V1 (`/api/finance`, `/api/finance/obligations`, `/api/finance/instances`):
 
-- [ ] Recurring obligations
-- [ ] Monthly instances
-- [ ] Due dates
-- [ ] Paid / pending
-- [ ] Amount / date
-- [ ] Monthly required total
-- [ ] Upcoming payments
+- [x] Recurring obligations — the definition, never mutated to record a payment
+- [x] Monthly instances — bounded, idempotent generation (`domain/finance/instances.ts`,
+      capped at 24 periods, writes only the gaps)
+- [x] Due dates — clamped to the last day of short months
+- [x] Paid / pending — plus partial, skipped, and derived overdue
+- [x] Amount / date
+- [x] Monthly required total — summed in exact minor units, grouped by currency
+- [x] Upcoming payments
 
 Tasks:
 
-- [ ] Create
-- [ ] Due date / time
-- [ ] Priority
-- [ ] Status
-- [ ] Mark done
-- [ ] Reschedule
+- [x] Create · due date/time · priority · status · mark done · reschedule
+      (`PATCH /api/commitments/:id`)
 
 Reminders:
 
-- [ ] One-time
-- [ ] Recurring
-- [ ] Lead-time preference
+- [x] One-time
+- [x] Recurring — yearly, monthly and weekly next-occurrence
+- [x] Lead-time preference — `lead_days` (migration 0008); the fire date is computed
+      from due date + lead time, never stored
 
 Important dates:
 
-- [ ] Birthdays
-- [ ] Anniversaries
-- [ ] Renewal dates
+- [x] Birthdays · anniversaries · renewal dates, with annual recurrence. Feb 29 clamps
+      to Feb 28 in a non-leap year rather than rolling into March
 
 Acceptance:
 
-- [ ] Finance totals deterministic
-- [ ] Recurring definition separate from monthly history
-- [ ] Idempotent updates
-- [ ] Correct timezone handling
+- [x] Finance totals deterministic — every figure derived from stored instances at read
+      time, exact minor-unit arithmetic, `now` always passed in
+- [x] Recurring definition separate from monthly history — obligations vs instances,
+      and the UI mirrors the split
+- [x] Idempotent updates — re-marking the same amount and date is a no-op; generation
+      only fills gaps and relies on the unique `(obligation_id, period)` constraint
+- [x] Correct timezone handling — "today" and the period key resolve in the user's
+      timezone; date arithmetic works on `YYYY-MM-DD` strings rather than local `Date`
+      objects, which would shift the day for anyone west of UTC
 
-## Phase 5 — Paste/share + drafting + WhatsApp/email — 10h — Not started
+Not verified against a live database or a real OpenAI key — see the Phase 9 follow-ups.
 
-Paste-to-Symora — Symora interprets and proposes an action for:
+## Phase 5 — Paste/share + drafting + WhatsApp/email — 10h — Done
 
-- [ ] Payment confirmation
-- [ ] Appointment
-- [ ] Booking confirmation
-- [ ] Renewal message
-- [ ] Other useful text
+Paste-to-Symora (`PastePanel` → `/api/chat`) — categorised deterministically, then
+interpreted; the proposed action always requires confirmation because pasted
+third-party content is high-impact by definition:
 
-Message drafting:
+- [x] Payment confirmation
+- [x] Appointment
+- [x] Booking confirmation
+- [x] Renewal message
+- [x] Other useful text — falls back to `other` rather than guessing
 
-- [ ] Generate 2 variants in one AI call (short, and warm/detailed)
-- [ ] Use known relationship / context when available
+Message drafting (`/api/drafts`):
+
+- [x] Generate 2 variants in one AI call (short, and warm/detailed)
+- [x] Use known relationship / context when available — relevant memories are retrieved
+      and folded into the recipient context
 
 Handoff:
 
-- [ ] One-tap WhatsApp — `wa.me` link with prefilled text (no WhatsApp Business API in V1)
-- [ ] One-tap email — `mailto` prefill in V1
-- [ ] Share-to-Symora — design the adapter/interface now (native share extension later if
-      required)
+- [x] One-tap WhatsApp — `wa.me` link with prefilled text, built by a pure function
+      (`adapters/whatsapp-adapter.ts`). No WhatsApp Business API; Symora never sends
+- [x] One-tap email — `mailto` prefill (`adapters/mailto-adapter.ts`)
+- [x] Share-to-Symora — `MessagingAdapter` / `EmailAdapter` interfaces carry the shape a
+      native share extension would implement later; no extension is built
 
 ## Phase 6 — Personalized home + small dynamic UI — 10h — Not started
 
@@ -334,6 +344,12 @@ Follow-ups recorded during earlier phases:
 - [ ] Integration test for the memory repository against a real database — the Phase 3
       unit tests cover the pure decision logic, not the queries.
 - [ ] Cross-user access test for `/api/memories` and `/api/memories/:id`
+- [ ] Cross-user access tests for the Phase 4/5 endpoints (`/api/commitments`,
+      `/api/tasks`, `/api/reminders`, `/api/finance/*`, `/api/drafts`)
+- [ ] `ChatPanel` and `PastePanel` each hold their own `useChat` state, so they start
+      separate conversations. Phase 6 unifies them on the home screen.
+- [ ] Instance generation walks obligations one at a time (N+1 reads). Fine at V1
+      volumes; worth a single windowed query if an account ever carries many obligations.
 
 ---
 

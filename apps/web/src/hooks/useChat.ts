@@ -3,6 +3,9 @@ import { useMutation } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import type { ChatMessageView, ChatResponseBody, ChatUiSchema, IntentName } from '@symora/core';
 
+type ConfirmationProps = Extract<ChatUiSchema, { component: 'confirmation-prompt' }>['props'];
+type DraftProps = Extract<ChatUiSchema, { component: 'message-draft' }>['props'];
+
 interface SendPayload {
   text: string;
   confirm?: { intent: IntentName; args: unknown };
@@ -11,7 +14,8 @@ interface SendPayload {
 export function useChat() {
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
   const [messages, setMessages] = useState<ChatMessageView[]>([]);
-  const [pendingConfirmation, setPendingConfirmation] = useState<ChatUiSchema['props'] | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<ConfirmationProps | null>(null);
+  const [draft, setDraft] = useState<DraftProps | null>(null);
 
   const mutation = useMutation({
     mutationFn: (payload: SendPayload) =>
@@ -23,6 +27,7 @@ export function useChat() {
       setConversationId(data.conversationId);
       setMessages((prev) => [...prev, data.message]);
       setPendingConfirmation(data.ui?.component === 'confirmation-prompt' ? data.ui.props : null);
+      setDraft(data.ui?.component === 'message-draft' ? data.ui.props : null);
     },
   });
 
@@ -40,6 +45,7 @@ export function useChat() {
         },
       ]);
       setPendingConfirmation(null);
+      setDraft(null);
       mutation.mutate({ text });
     },
     [mutation],
@@ -55,9 +61,16 @@ export function useChat() {
 
   const cancel = useCallback(() => setPendingConfirmation(null), []);
 
+  // The last thing Symora said, for surfaces that show a single reply rather than a
+  // transcript (the paste panel).
+  const lastAssistantText =
+    [...messages].reverse().find((message) => message.role === 'assistant')?.content ?? null;
+
   return {
     messages,
     pendingConfirmation,
+    draft,
+    lastAssistantText,
     sendMessage,
     confirm,
     cancel,

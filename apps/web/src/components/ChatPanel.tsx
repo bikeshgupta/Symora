@@ -10,7 +10,15 @@ import { cn } from '@/lib/cn';
  * confirm/cancel prompt below stands in for that trusted component until Phase 6.
  */
 export function ChatPanel() {
-  const { messages, pendingConfirmation, sendMessage, confirm, cancel, isSending } = useChat();
+  const {
+    messages,
+    pendingConfirmation,
+    draft: messageDraft,
+    sendMessage,
+    confirm,
+    cancel,
+    isSending,
+  } = useChat();
   const [draft, setDraft] = useState('');
 
   function handleSubmit(event: FormEvent) {
@@ -48,6 +56,35 @@ export function ChatPanel() {
           </div>
         ))}
       </div>
+
+      {messageDraft && (
+        <ul className="mt-4 flex flex-col gap-3">
+          {messageDraft.variants.map((variant) => (
+            <li key={variant.variant} className="rounded-md border border-border bg-surface-raised p-3">
+              <p className="text-caption text-text-muted">
+                {variant.variant === 'short' ? 'Short' : 'Warmer'}
+              </p>
+              <p className="mt-1 whitespace-pre-wrap text-body-sm text-text-primary">{variant.text}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <a
+                  href={variant.handoff.whatsappUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-h-[44px] items-center rounded-md bg-primary px-4 text-body-sm font-medium text-primary-foreground hover:bg-primary-hover"
+                >
+                  Open in WhatsApp
+                </a>
+                <a
+                  href={variant.handoff.mailtoUrl}
+                  className="inline-flex min-h-[44px] items-center rounded-md border border-border bg-surface px-4 text-body-sm font-medium text-text-primary"
+                >
+                  Open in email
+                </a>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {pendingConfirmation && (
         <div className="mt-4 rounded-md border-2 border-primary p-4">

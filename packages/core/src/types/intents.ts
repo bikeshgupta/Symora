@@ -40,8 +40,15 @@ export const createReminderArgs = z
     dueDate: isoDate.optional(),
     dueTime: isoTime.optional(),
     recurrenceRule: z.string().optional().describe('e.g. "monthly", "weekly on Saturday".'),
+    leadDays: z
+      .number()
+      .int()
+      .min(0)
+      .max(365)
+      .optional()
+      .describe('How many days before the due date to remind, e.g. 2 for "remind me 2 days before".'),
   })
-  .describe('Create a one-time or recurring reminder.');
+  .describe('Create a one-time or recurring reminder, optionally with a lead time.');
 
 export const createFinancialObligationArgs = z
   .object({

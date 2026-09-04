@@ -26,10 +26,22 @@ const RESPONSE_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+export interface DraftMessageOptions {
+  /**
+   * A pre-rendered memory block (buildMemoryContext). Passed already fenced and
+   * labelled as reference data rather than as raw text, because a memory holds whatever
+   * the user typed and must never reach the model in instruction position
+   * (.claude/rules/ai-pipeline.md § Memory in the pipeline). The caller renders it so
+   * this domain service does not have to reach up into the AI layer.
+   */
+  memoryContext?: string | null;
+}
+
 export async function draftMessage(
   aiProvider: AIProvider,
   args: IntentArgs<'draft_message'>,
   language: 'en' | 'hi' | 'hinglish',
+  options: DraftMessageOptions = {},
 ): Promise<DraftMessageResult> {
   const result = await aiProvider.complete({
     tier: 'cheap',
@@ -44,6 +56,7 @@ export async function draftMessage(
           '(warmer, more context). Use the stated relationship to the recipient, if given, ' +
           'to set the tone. Output nothing else — the message text only, no preamble.',
       },
+      ...(options.memoryContext ? [{ role: 'system' as const, content: options.memoryContext }] : []),
       {
         role: 'user',
         content:

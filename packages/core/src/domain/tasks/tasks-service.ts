@@ -7,8 +7,9 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import * as commitmentsRepository from '../../repositories/commitments-repository';
-import type { CommitmentRecord } from '../../types/commitment';
+import type { CommitmentPriority, CommitmentRecord, CommitmentView } from '../../types/commitment';
 import type { IntentArgs } from '../../types/intents';
+import * as commitmentsService from '../commitments/commitments-service';
 
 export async function createTask(
   client: SupabaseClient,
@@ -24,4 +25,31 @@ export async function createTask(
     priority: args.priority ?? 'normal',
     source: 'chat',
   });
+}
+
+export interface CreateTaskInput {
+  title: string;
+  dueDate?: string | null;
+  dueTime?: string | null;
+  priority?: CommitmentPriority;
+  description?: string | null;
+}
+
+/** The REST entry point; the chat path above goes through createTask. */
+export async function create(
+  client: SupabaseClient,
+  userId: string,
+  input: CreateTaskInput,
+): Promise<CommitmentRecord> {
+  return commitmentsService.create(client, userId, { ...input, type: 'TASK' });
+}
+
+export async function list(
+  client: SupabaseClient,
+  userId: string,
+  params: { status?: 'pending' | 'done' | 'cancelled'; dueBefore?: string },
+  now: Date,
+  timezone: string,
+): Promise<CommitmentView[]> {
+  return commitmentsService.list(client, userId, { ...params, type: 'TASK' }, now, timezone);
 }

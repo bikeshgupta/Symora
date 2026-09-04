@@ -18,8 +18,10 @@ import {
   getSupabaseServiceClient,
   INTENT_NAMES,
   isHighImpactIntent,
+  categorizePastedText,
   memoryService,
   openAiProvider,
+  truncateForExtraction,
   runTool,
   type ChatResponseBody,
   type IntentName,
@@ -157,7 +159,11 @@ export default withApiHandler(async (req, res, ctx) => {
   // interpretation step itself (.claude/rules/ai-pipeline.md — pasted content is
   // always high-impact, regardless of the nested extraction's own confidence).
   if (extraction.intent === 'interpret_pasted_message') {
-    const pastedText = (extraction.args as { pastedText?: string } | null)?.pastedText ?? '';
+    const rawPastedText = (extraction.args as { pastedText?: string } | null)?.pastedText ?? '';
+    // Bound the second call's input: pasted content can be a whole email thread, and
+    // only the top of it carries the signal.
+    const pastedText = truncateForExtraction(rawPastedText);
+    const pasteCategory = categorizePastedText(pastedText);
     // Re-retrieve against the pasted text itself: what is relevant to "here is a
     // message from my landlord" is rarely what is relevant to the message's contents.
     const pastedMemories = await memoryService.retrieveRelevant(
@@ -180,8 +186,11 @@ export default withApiHandler(async (req, res, ctx) => {
     });
 
     const composed = nested.intent
-      ? composeConfirmation(nested.intent, nested.args ?? {})
-      : composeConversational(nested.text ?? "I looked at that text but couldn't identify an action to take.");
+      ? composeConfirmation(nested.intent, nested.args ?? {}, pasteCategory)
+      : composeConversational(
+          nested.text ??
+            "I looked at that text but couldn't identify an action to take.",
+        );
     await respond(composed.text, composed.ui, nested.intent ?? 'interpret_pasted_message');
     return;
   }
