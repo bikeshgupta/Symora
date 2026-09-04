@@ -139,26 +139,53 @@ export function parseDate(text: string, anchors: TemporalAnchors): ParsedDate | 
 }
 
 /** "2 days before" / "2 din pehle" — the lead time on a reminder. */
+const LEAD_DAYS = /\b(\d{1,3})\s*(?:days?|din)\s*(?:before|pehle|prior|ahead)\b/i;
+
 export function parseLeadDays(text: string): number | null {
-  const match = text.match(/\b(\d{1,3})\s*(?:days?|din)\s*(?:before|pehle|prior|ahead)\b/i);
+  const match = text.match(LEAD_DAYS);
   if (!match) return null;
   const days = Number(match[1]);
   return days >= 0 && days <= 365 ? days : null;
 }
 
+/**
+ * Removes the phrase `parseLeadDays` read.
+ *
+ * The lead time is structure, not subject: left in place it turns "remind me 2 days
+ * before every bill" into a reminder titled "2 days before bill", which is what the
+ * user then reads in their list.
+ */
+export function stripLeadDays(text: string): string {
+  return text.replace(LEAD_DAYS, ' ');
+}
+
 /** "on the 5th" / "5 tarikh" / "every month on 5" — the day of month an EMI falls due. */
-export function parseDueDay(text: string): number | null {
-  const patterns = [
-    /\bon\s+(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\b/i,
-    /\b(\d{1,2})\s*(?:tarikh|tareekh)\b/i,
-    /\b(\d{1,2})(?:st|nd|rd|th)\b/i,
-  ];
-  for (const pattern of patterns) {
+const DUE_DAY_PATTERNS = [
+  /\bon\s+(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\b/i,
+  /\b(\d{1,2})\s*(?:tarikh|tareekh)\b/i,
+  /\b(\d{1,2})(?:st|nd|rd|th)\b/i,
+];
+
+/** The first pattern that reads as a usable day of month, with the text it matched. */
+function matchDueDay(text: string): { day: number; matchedText: string } | null {
+  for (const pattern of DUE_DAY_PATTERNS) {
     const match = text.match(pattern);
-    if (match) {
-      const day = Number(match[1]);
-      if (day >= 1 && day <= 31) return day;
-    }
+    if (!match) continue;
+    const day = Number(match[1]);
+    if (day >= 1 && day <= 31) return { day, matchedText: match[0] };
   }
   return null;
+}
+
+export function parseDueDay(text: string): number | null {
+  return matchDueDay(text)?.day ?? null;
+}
+
+/**
+ * Removes the phrase `parseDueDay` read, so the due day does not survive into an
+ * account name — "Home loan month 5th" is not what the user calls their loan.
+ */
+export function stripDueDay(text: string): string {
+  const match = matchDueDay(text);
+  return match ? text.replace(match.matchedText, ' ') : text;
 }

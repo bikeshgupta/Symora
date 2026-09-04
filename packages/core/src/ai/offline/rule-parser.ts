@@ -20,7 +20,7 @@ import type { ExtractionResult } from '../orchestrator/intent-extraction';
 import type { IntentName } from '../../types/intents';
 import type { MessageLanguage } from '../../types/conversation';
 import type { TemporalAnchors } from '../../domain/temporal/temporal-context';
-import { parseDate, parseDueDay, parseLeadDays } from './date-parser';
+import { parseDate, parseDueDay, parseLeadDays, stripDueDay, stripLeadDays } from './date-parser';
 import { parseAmount } from './amount-parser';
 
 /** Reported when a pattern matched cleanly and every required field was found. */
@@ -45,15 +45,31 @@ function conversational(text: string): ExtractionResult {
   return { intent: null, args: null, confidence: 0, text, usage: NO_USAGE, model: MODEL };
 }
 
+/**
+ * Removes one phrase the parsers already consumed, wherever and however it is cased.
+ *
+ * Case matters here because the parsers return canonical text, not the user's: "kal" for
+ * a Hinglish relative date, "tomorrow" for an English one. A plain `String.replace` with
+ * that canonical form is both case-sensitive and first-match-only, so "Kal doctor
+ * appointment hai" kept its "Kal" and the task was titled with the date still in it.
+ */
+function stripPhrase(text: string, phrase: string): string {
+  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return text.replace(new RegExp(escaped, 'gi'), ' ');
+}
+
 /** Strips the phrases that carried structure so what is left can serve as a title. */
 function cleanTitle(text: string, removals: (string | undefined)[]): string {
   let cleaned = text;
   for (const removal of removals) {
-    if (removal) cleaned = cleaned.replace(removal, ' ');
+    if (removal) cleaned = stripPhrase(cleaned, removal);
   }
   return cleaned
     .replace(
-      /\b(remind me|remind|please|kindly|yaad dila dena|yaad dilana|yaad rakhna|karna hai|karna|mujhe|ko|par|on|at|every|har)\b/gi,
+      // "karna hai" and "remind me" sit before their own first words on purpose:
+      // alternation takes the first branch that matches, and stripping "remind" alone
+      // would strand the "me" in the title.
+      /\b(remind me|remind|please|kindly|yaad dila dena|yaad dilana|yaad rakhna|karna hai|karna|mujhe|ko|par|on|at|every|har|hai|hain)\b/gi,
       ' ',
     )
     .replace(/[.,!?]+/g, ' ')
@@ -74,6 +90,67 @@ const OBLIGATION_TYPES: { pattern: RegExp; type: string }[] = [
 
 function detectObligationType(text: string): string {
   return OBLIGATION_TYPES.find(({ pattern }) => pattern.test(text))?.type ?? 'other';
+}
+
+/**
+ * Words that can precede the obligation keyword without being part of its name.
+ *
+ * Only the qualifier immediately to the left is ever considered (see `accountNameFrom`),
+ * so this needs to cover the framing a sentence puts there — "a", "my", "mera" — not
+ * every function word in the language.
+ */
+const NOT_A_QUALIFIER =
+  /^(?:i|we|you|a|an|the|my|our|your|is|are|was|have|has|had|there|this|that|these|those|and|but|which|who|of|for|on|in|at|to|per|every|each|month|monthly|running|ongoing|new|paying|pay|pays|paid|deduct|deducts|deducted|amount|rs|inr|rupees|mera|meri|mere|apna|apni|ek|hai|hain|ka|ki|ke|ko|har|mahine|wala|wali)$/i;
+
+/** Sentence-like rather than name-like: past this, subtraction has kept the whole input. */
+const MAX_NAME_WORDS = 5;
+
+/** "5th", "1st", "22nd" — for asking about a day the user already gave us. */
+function ordinalSuffix(day: number): string {
+  if (day >= 11 && day <= 13) return 'th';
+  return { 1: 'st', 2: 'nd', 3: 'rd' }[day % 10] ?? 'th';
+}
+
+/**
+ * The account name for a recurring payment.
+ *
+ * Built by *anchoring* on the obligation keyword rather than by subtracting known
+ * structure from the sentence. Subtraction is fine for a terse "Home loan 42500 every
+ * month on 5th", but it keeps everything it does not recognise — so "i have a home loan
+ * emi running which deduct 5th of every month, and the amount is 75000" produced an
+ * account named "i have a home loan emi running which deduct of and the amount is". The
+ * user then sees that on a confirmation card, which is worse than being asked.
+ *
+ * So: find the keyword that decided the type, keep one qualifier to its left when there
+ * is a real one ("HDFC home loan", not "a home loan"), and fall back to the subtractive
+ * clean only when no keyword matched at all.
+ */
+function accountNameFrom(raw: string, fallback: string): string | null {
+  const anchor = OBLIGATION_TYPES.map(({ pattern }) => raw.match(pattern)).find(
+    (match): match is RegExpMatchArray => match !== null && match.index !== undefined,
+  );
+
+  if (anchor) {
+    const preceding = raw
+      .slice(0, anchor.index)
+      .trim()
+      .split(/\s+/)
+      .filter((word) => word.length > 0);
+    const qualifier = preceding[preceding.length - 1] ?? '';
+    // A number is structure, not a name — "75000 home loan" is not called "75000 home".
+    const keepQualifier = qualifier.length > 0 && !NOT_A_QUALIFIER.test(qualifier) && !/\d/.test(qualifier);
+    const name = `${keepQualifier ? `${qualifier} ` : ''}${anchor[0]}`.replace(/\s+/g, ' ').trim();
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+
+  // No keyword to anchor on. The subtractive clean is all there is, and it is only
+  // trustworthy while what it left behind still reads as a name: short, and not opening
+  // on a function word. "Society maintenance" passes; "i pay for something" does not,
+  // and is a question worth asking rather than a name worth saving.
+  if (!fallback) return null;
+  const words = fallback.split(/\s+/);
+  if (words.length > MAX_NAME_WORDS) return null;
+  return NOT_A_QUALIFIER.test(words[0]!) ? null : fallback;
 }
 
 const RECURRING = /\b(every\s+month|monthly|har\s+mahine|har\s+month|per\s+month|each\s+month|mahine)\b/i;
@@ -104,6 +181,25 @@ export interface OfflineExtractionOptions {
   temporal: TemporalAnchors;
   /** Set when the caller already knows this is pasted content. */
   forcePaste?: boolean;
+}
+
+/**
+ * Who the message is for, from a "to ..." phrase.
+ *
+ * The relationship is the first word or two after "to"; everything from the first
+ * connector onward describes the message, not the recipient. Without that cut, "draft a
+ * message to the landlord about the leak" addressed itself to "landlord about the leak",
+ * which then reached the template drafter as a name.
+ */
+function recipientFrom(text: string): string | undefined {
+  // \p{L}\p{M} rather than an explicit Devanagari range: matras are combining marks,
+  // and mixing them with base letters in a character class is both misleading and
+  // wrong for scripts that stack them.
+  const to = text.match(/\bto\s+(?:my\s+|the\s+)?([\p{L}\p{M}\s]{2,30})/iu);
+  if (!to) return undefined;
+  const beforeConnector = to[1]!.split(/\b(?:about|regarding|saying|asking|that|for|re)\b/i)[0]!;
+  const relationship = beforeConnector.trim().split(/\s+/).slice(0, 2).join(' ');
+  return relationship || undefined;
 }
 
 export function extractIntentOffline(
@@ -147,13 +243,9 @@ export function extractIntentOffline(
   // -- draft_message --
   if (DRAFT.test(raw)) {
     const about = raw.replace(DRAFT, ' ').replace(/^\s*(a|an|the)\s+/i, '').trim();
-    // \p{L}\p{M} rather than an explicit Devanagari range: matras are combining marks,
-    // and mixing them with base letters in a character class is both misleading and
-    // wrong for scripts that stack them.
-    const to = raw.match(/\bto\s+(?:my\s+|the\s+)?([\p{L}\p{M}\s]{2,30})/iu);
     return result(
       'draft_message',
-      { context: about || raw, recipientRelationship: to?.[1]?.trim() },
+      { context: about || raw, recipientRelationship: recipientFrom(raw) },
       about ? CONFIDENCE_LIKELY : CONFIDENCE_UNSURE,
     );
   }
@@ -161,24 +253,35 @@ export function extractIntentOffline(
   // -- create_financial_obligation: an amount plus a recurrence --
   if (amount && RECURRING.test(raw)) {
     const dueDay = parseDueDay(raw);
-    const accountName = cleanTitle(raw, [amount.matchedText]).replace(RECURRING, ' ').replace(/\s+/g, ' ').trim();
+    // Order matters: the recurrence and the due day come out as whole phrases first,
+    // because cleanTitle's own stopword pass eats the 'every' and 'on' that hold them
+    // together and leaves 'month 5th' stranded in the account name.
+    const subtractive = cleanTitle(stripDueDay(raw.replace(RECURRING, ' ')), [amount.matchedText]);
+    const accountName = accountNameFrom(raw, subtractive);
 
     if (!dueDay) {
       return conversational(
-        `I can set up "${accountName || 'that'}" for ${amount.currency} ${amount.amount} a month — which day of the month is it due?`,
+        `I can set up "${accountName ?? 'that'}" for ${amount.currency} ${amount.amount} a month — which day of the month is it due?`,
+      );
+    }
+    // Asking beats guessing: this always reaches a confirmation card, and a card showing
+    // a name Symora invented invites the user to skim past it and save it that way.
+    if (!accountName) {
+      return conversational(
+        `I have ${amount.currency} ${amount.amount} on the ${dueDay}${ordinalSuffix(dueDay)} of every month — what should I call this payment?`,
       );
     }
     return result(
       'create_financial_obligation',
       {
-        accountName: accountName || 'Payment',
+        accountName,
         obligationType: detectObligationType(raw),
         amount: amount.amount,
         currency: amount.currency,
         dueDay,
         recurrenceRule: 'monthly',
       },
-      accountName ? CONFIDENCE_CLEAR : CONFIDENCE_UNSURE,
+      CONFIDENCE_CLEAR,
     );
   }
 
@@ -229,7 +332,10 @@ export function extractIntentOffline(
   // -- create_reminder --
   if (REMIND.test(raw)) {
     const leadDays = parseLeadDays(raw);
-    const title = cleanTitle(raw, [date?.matchedText]).replace(REMIND, ' ').replace(/\s+/g, ' ').trim();
+    // REMIND is not pre-stripped here the way RECURRING is above: it would take the
+    // "remind" out of "remind me" and leave a title starting with a stranded "me".
+    // cleanTitle's own list handles the whole phrase.
+    const title = cleanTitle(stripLeadDays(raw), [date?.matchedText]);
     if (!title) return conversational('What should I remind you about?');
     return result(
       'create_reminder',
