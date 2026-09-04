@@ -3,7 +3,7 @@
 Phase-by-phase build tracker. Source of truth for scope and acceptance criteria:
 `docs/Symora_V1_Requirements_and_Architecture_FULL.md`.
 
-**Overall status: Phases 1-5 complete.** Phase 6 is next.
+**Overall status: Phases 1-7 complete.** Phase 8 is next.
 
 | Phase | Status | Estimate |
 | --- | --- | --- |
@@ -13,8 +13,8 @@ Phase-by-phase build tracker. Source of truth for scope and acceptance criteria:
 | 3 — Personal memory | Done | 12h |
 | 4 — Commitments + finance + tasks/reminders | Done | 20h |
 | 5 — Paste/share + drafting + WhatsApp/email | Done | 10h |
-| 6 — Personalized home + small dynamic UI | Not started | 10h |
-| 7 — Voice + Hindi/Hinglish | Not started | 10h |
+| 6 — Personalized home + small dynamic UI | Done | 10h |
+| 7 — Voice + Hindi/Hinglish | Done | 10h |
 | 8 — Notifications + usage + privacy basics | Not started | 8h |
 | 9 — Testing / hardening | Not started | 15–25h |
 
@@ -236,55 +236,73 @@ Handoff:
 - [x] Share-to-Symora — `MessagingAdapter` / `EmailAdapter` interfaces carry the shape a
       native share extension would implement later; no extension is built
 
-## Phase 6 — Personalized home + small dynamic UI — 10h — Not started
+## Phase 6 — Personalized home + small dynamic UI — 10h — Done
 
-Home:
+Home — one `GET /api/home` call, all of it computed server-side by
+`domain/home/home-service.ts`:
 
-- [ ] Greeting
-- [ ] Needs Attention
-- [ ] Upcoming payment
-- [ ] Today task
-- [ ] Important date
-- [ ] Overdue item
-- [ ] Contextual suggestions
-- [ ] Ask Symora input
+- [x] Greeting — part of day resolved from the wall-clock hour in the user's timezone
+- [x] Needs Attention — ranked, capped at 5, total ordering so it never reshuffles
+- [x] Upcoming payment
+- [x] Today task
+- [x] Important date — surfaced 14 days ahead
+- [x] Overdue item — ranked above everything else
+- [x] Contextual suggestions — chosen from what is actually on screen; tapping one fills
+      the Ask Symora input rather than executing, so a chip cannot bypass confirmation
+- [x] Ask Symora input
 
-Trusted V1 UI components:
+Trusted V1 UI components (`apps/web/src/components/trusted/`):
 
-- [ ] `AttentionCard`
-- [ ] `PaymentSummary`
-- [ ] `CommitmentList`
-- [ ] `TaskList`
-- [ ] `ConfirmationCard`
-- [ ] `MessageDraftCard`
-- [ ] `SuggestionChip`
+- [x] `AttentionCard`
+- [x] `PaymentSummary`
+- [x] `CommitmentList`
+- [x] `TaskList`
+- [x] `ConfirmationCard`
+- [x] `MessageDraftCard`
+- [x] `SuggestionChip`
 
 Component rules (see `.claude/rules/design-system.md`):
 
-- [ ] All seven share one `CardShell` — same radius, padding rhythm, and elevation
-- [ ] Status communicated by colour **and** text or icon in every component, never
-      colour alone
-- [ ] `ConfirmationCard` visually distinct from every passive card
-- [ ] Every screen checked in both light and dark themes
+- [x] All seven share one `CardShell` — same radius, padding rhythm, and elevation.
+      `SuggestionChip` is the documented exception (pill, recedes)
+- [x] Status communicated by colour **and** text or icon — `StatusPill` makes `label` a
+      required prop, so a bare coloured dot cannot be built
+- [x] `ConfirmationCard` visually distinct — the 2px primary border via CardShell's
+      `gated` emphasis, which nothing else uses
+- [ ] Every screen checked in both light and dark themes — **needs a real browser**;
+      tokens are wired, but no one has looked at it
 
-- [ ] Avoid a generic dashboard
+- [x] Avoid a generic dashboard — the home ranks and caps rather than listing everything
 
-## Phase 7 — Voice + Hindi/Hinglish — 10h — Not started
+## Phase 7 — Voice + Hindi/Hinglish — 10h — Done
 
 Build:
 
-- [ ] Push-to-talk
-- [ ] Speech-to-text
-- [ ] Raw transcript
-- [ ] Language detection
-- [ ] Hindi / Hinglish interpretation
-- [ ] Confirmation for ambiguous sensitive values
+- [x] Push-to-talk — `useVoiceInput`, MediaRecorder with a negotiated mime type
+- [x] Speech-to-text — `openAiSpeechAdapter` behind the `SpeechAdapter` interface;
+      `POST /api/voice/transcribe`
+- [x] Raw transcript — returned unedited and shown to the user before anything acts on
+      it; transcription and interpretation are two separate steps on purpose
+- [x] Language detection — extended from the NLP corpus (see below)
+- [x] Hindi / Hinglish interpretation — the extraction prompt now carries temporal
+      anchors computed in code, so "kal", "Saturday" and "agle 5 din" resolve against
+      real dates in the user's timezone instead of the model guessing what today is
+- [x] Confirmation for ambiguous sensitive values — a voice turn carrying a monetary
+      amount always confirms (`requiresSourceConfirmation`), and an ambiguous relative
+      date with no tense to settle it clarifies rather than guessing
 
-Acceptance:
+Acceptance — the deterministic halves (language, ambiguity, the risk gate) are asserted
+in `ai/orchestrator/nlp-corpus.test.ts`; which intent the model picks still needs a live
+key:
 
-- [ ] "Kal wali EMI bhar diya."
-- [ ] "Saturday electrician ko call karna yaad dila dena."
-- [ ] "Agle 5 din me kitna payment baki hai?"
+- [x] "Kal wali EMI bhar diya." — detected Hinglish, past tense settles "kal"
+- [x] "Saturday electrician ko call karna yaad dila dena." — detected Hinglish
+- [x] "Agle 5 din me kitna payment baki hai?" — detected Hinglish
+- [ ] End-to-end through a live OpenAI key — not run
+
+NLP regression corpus started at `ai/orchestrator/nlp-corpus.test.ts`, covering both
+phases' acceptance phrases. It already earned its keep: "parso appointment" was being
+detected as English because no marker in it was listed.
 
 ## Phase 8 — Notifications + usage + privacy basics — 8h — Not started
 
@@ -333,7 +351,8 @@ Test:
 - [ ] Notifications
 - [ ] Data deletion / export
 
-- [ ] Maintain an NLP regression corpus of messy real user phrases
+- [x] Maintain an NLP regression corpus of messy real user phrases — started in Phase 7
+      (`ai/orchestrator/nlp-corpus.test.ts`); keep adding a row per real parsing bug
 
 Follow-ups recorded during earlier phases:
 
@@ -344,10 +363,14 @@ Follow-ups recorded during earlier phases:
 - [ ] Integration test for the memory repository against a real database — the Phase 3
       unit tests cover the pure decision logic, not the queries.
 - [ ] Cross-user access test for `/api/memories` and `/api/memories/:id`
-- [ ] Cross-user access tests for the Phase 4/5 endpoints (`/api/commitments`,
-      `/api/tasks`, `/api/reminders`, `/api/finance/*`, `/api/drafts`)
-- [ ] `ChatPanel` and `PastePanel` each hold their own `useChat` state, so they start
-      separate conversations. Phase 6 unifies them on the home screen.
+- [ ] Cross-user access tests for the Phase 4-7 endpoints (`/api/commitments`,
+      `/api/tasks`, `/api/reminders`, `/api/finance/*`, `/api/drafts`, `/api/home`,
+      `/api/voice/transcribe`)
+- [ ] Both themes checked in a real browser, and Mukta's tabular figures verified
+- [ ] Voice tested on a real device — MediaRecorder mime-type support varies most on
+      iOS Safari, which is exactly where this has not been run
+- [x] `ChatPanel` and `PastePanel` each held their own `useChat` state — fixed in
+      Phase 6: `HomePage` owns one instance and passes it to both surfaces.
 - [ ] Instance generation walks obligations one at a time (N+1 reads). Fine at V1
       volumes; worth a single windowed query if an account ever carries many obligations.
 

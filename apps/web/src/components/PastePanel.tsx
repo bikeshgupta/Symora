@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { useChat } from '@/hooks/useChat';
+import { ConfirmationCard } from '@/components/trusted';
+import type { useChat } from '@/hooks/useChat';
 
 /**
  * Paste-to-Symora (PROGRESS.md Phase 5). The user pastes something someone else sent —
@@ -12,9 +13,12 @@ import { useChat } from '@/hooks/useChat';
  * always comes back as a confirmation the user has to accept: pasted third-party content
  * is high-impact by definition (.claude/rules/ai-pipeline.md), regardless of how
  * confident the interpretation was.
+ *
+ * It shares the page's single `useChat` instance rather than creating one: a paste and
+ * the follow-up question about it belong to the same conversation.
  */
-export function PastePanel() {
-  const { pendingConfirmation, sendMessage, confirm, cancel, isSending, lastAssistantText } = useChat();
+export function PastePanel({ chat }: { chat: ReturnType<typeof useChat> }) {
+  const { pendingConfirmation, sendMessage, confirm, cancel, isSending, lastAssistantText } = chat;
   const [text, setText] = useState('');
 
   function handleSubmit(event: FormEvent) {
@@ -55,24 +59,17 @@ export function PastePanel() {
       )}
 
       {pendingConfirmation && (
-        <div className="mt-4 rounded-md border-2 border-primary p-4">
-          <p className="text-body-sm font-medium text-text-primary">{pendingConfirmation.question}</p>
-          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-caption text-text-muted">
-            {pendingConfirmation.fields.map((field) => (
-              <div key={field.label} className="contents">
-                <dt>{field.label}</dt>
-                <dd className="text-text-primary">{field.value}</dd>
-              </div>
-            ))}
-          </dl>
-          <div className="mt-3 flex gap-2">
-            <Button type="button" onClick={confirm} disabled={isSending}>
-              Yes, do that
-            </Button>
-            <Button type="button" variant="secondary" onClick={cancel} disabled={isSending}>
-              No, ignore it
-            </Button>
-          </div>
+        <div className="mt-4">
+          <ConfirmationCard
+            question={pendingConfirmation.question}
+            fields={pendingConfirmation.fields}
+            note="This came from a message you pasted, so nothing is saved until you confirm."
+            confirmLabel="Yes, do that"
+            cancelLabel="No, ignore it"
+            onConfirm={confirm}
+            onCancel={cancel}
+            isBusy={isSending}
+          />
         </div>
       )}
     </Card>

@@ -27,3 +27,14 @@ export type {
 } from './domain/finance/finance-service';
 export type { InstanceState } from './domain/finance/instances';
 export type { RecurrenceRule, DueUrgency } from './domain/commitments/recurrence';
+export * as homeService from './domain/home/home-service';
+export type { HomePayload, AttentionItem, HomeSuggestion } from './domain/home/home-service';
+export {
+  buildTemporalAnchors,
+  renderTemporalContext,
+  hasAmbiguousRelativeDate,
+  needsRelativeDateClarification,
+  weekdayOf,
+  nextWeekday,
+  type TemporalAnchors,
+} from './domain/temporal/temporal-context';

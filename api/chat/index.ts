@@ -7,11 +7,11 @@
 import { z } from 'zod';
 import {
   aiUsageRepository,
+  buildTemporalAnchors,
   composeConfirmation,
   composeConversational,
   composeToolResult,
   conversationsRepository,
-  decide,
   detectLanguage,
   extractIntent,
   getArgsSchema,
@@ -19,11 +19,14 @@ import {
   INTENT_NAMES,
   isHighImpactIntent,
   categorizePastedText,
+  decideTurn,
   memoryService,
+  needsRelativeDateClarification,
   openAiProvider,
   truncateForExtraction,
   runTool,
   type ChatResponseBody,
+  type TurnSource,
   type IntentName,
   type MessageRecord,
 } from '@symora/core';
@@ -33,6 +36,12 @@ import { withApiHandler } from '../_middleware/handler';
 const requestSchema = z.object({
   conversationId: z.string().uuid().optional(),
   text: z.string().min(1).max(4000),
+  /**
+   * Where this turn came from. It only ever widens the confirmation gate — a voice turn
+   * carrying a monetary amount always confirms — so a client that lies about it can make
+   * Symora more cautious, never less (.claude/rules/ai-pipeline.md).
+   */
+  source: z.enum(['chat', 'voice']).default('chat'),
   confirm: z
     .object({
       intent: z.enum(INTENT_NAMES as [IntentName, ...IntentName[]]),
@@ -77,6 +86,9 @@ export default withApiHandler(async (req, res, ctx) => {
 
   const language = detectLanguage(body.text);
   const now = new Date();
+  const source: TurnSource = body.source;
+  // Dates the model is allowed to use, computed here rather than by the model.
+  const temporal = buildTemporalAnchors(now, ctx.user.timezone);
   const toolCtx = {
     client,
     userId: ctx.user.id,
@@ -137,7 +149,7 @@ export default withApiHandler(async (req, res, ctx) => {
     ctx.user.timezone,
   );
 
-  const extraction = await extractIntent(openAiProvider, body.text, language, { memories });
+  const extraction = await extractIntent(openAiProvider, body.text, language, { memories, temporal });
   await aiUsageRepository.recordAiUsage(client, {
     userId: ctx.user.id,
     provider: openAiProvider.name,
@@ -173,7 +185,10 @@ export default withApiHandler(async (req, res, ctx) => {
       now,
       ctx.user.timezone,
     );
-    const nested = await extractIntent(openAiProvider, pastedText, language, { memories: pastedMemories });
+    const nested = await extractIntent(openAiProvider, pastedText, language, {
+      memories: pastedMemories,
+      temporal,
+    });
     await aiUsageRepository.recordAiUsage(client, {
       userId: ctx.user.id,
       provider: openAiProvider.name,
@@ -195,11 +210,24 @@ export default withApiHandler(async (req, res, ctx) => {
     return;
   }
 
-  const decision = decide(extraction.confidence, isHighImpactIntent(extraction.intent));
+  // "kal" is both yesterday and tomorrow; when the tense does not settle which, asking
+  // beats guessing — a confirmation card showing a date Symora picked invites the user
+  // to skim past a wrong one.
+  const unresolvedRelativeDate = needsRelativeDateClarification(body.text);
+
+  const decision = decideTurn({
+    confidence: extraction.confidence,
+    isHighImpact: isHighImpactIntent(extraction.intent),
+    source,
+    args: extraction.args,
+    hasUnresolvedRelativeDate: unresolvedRelativeDate,
+  });
 
   if (decision === 'clarify') {
     const composed = composeConversational(
-      'I want to make sure I get the details right — could you say that again with a bit more detail?',
+      unresolvedRelativeDate
+        ? 'Just to be sure — did you mean yesterday or tomorrow?'
+        : 'I want to make sure I get the details right — could you say that again with a bit more detail?',
     );
     await respond(composed.text, composed.ui, extraction.intent);
     return;

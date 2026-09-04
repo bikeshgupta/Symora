@@ -1,25 +1,54 @@
 import { useAuth } from '@/hooks/useAuth';
-import { useMe } from '@/hooks/useMe';
+import { useHome } from '@/hooks/useHome';
+import { useChat } from '@/hooks/useChat';
+import { useUpdateCommitment } from '@/hooks/useCommitments';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { ChatPanel } from '@/components/ChatPanel';
+import { AskSymora } from '@/components/AskSymora';
+import { AttentionCard, CardShell, PaymentSummary, TaskList } from '@/components/trusted';
+import { CommitmentList } from '@/components/trusted/CommitmentList';
 import { MemoryPanel } from '@/components/MemoryPanel';
-import { CommitmentsPanel } from '@/components/CommitmentsPanel';
-import { FinancePanel } from '@/components/FinancePanel';
 import { PastePanel } from '@/components/PastePanel';
 import { DraftPanel } from '@/components/DraftPanel';
+import { FinancePanel } from '@/components/FinancePanel';
+import { CommitmentsPanel } from '@/components/CommitmentsPanel';
 
+const GREETING: Record<string, string> = {
+  morning: 'Good morning',
+  afternoon: 'Good afternoon',
+  evening: 'Good evening',
+};
+
+/**
+ * The personalized home (PROGRESS.md Phase 6).
+ *
+ * Deliberately not a dashboard: the order is what needs you, then this month's money,
+ * then today, then the input. Everything on it is computed server-side by
+ * `homeService.getHome` and rendered through the trusted component set — the page
+ * derives no totals and picks no urgency of its own.
+ *
+ * One `useChat` instance is created here and passed down, so the Ask Symora box and the
+ * paste flow share a single conversation instead of starting two.
+ */
 export function HomePage() {
   const { signOutUser } = useAuth();
-  const { data: me, isLoading, isError, error } = useMe();
+  const { data: home, isLoading, isError, error } = useHome();
+  const chat = useChat();
+  const updateCommitment = useUpdateCommitment();
 
   return (
     <main className="min-h-dvh bg-background px-4 py-6 sm:px-6">
-      <div className="mx-auto flex max-w-2xl flex-col gap-6">
-        <header className="flex items-center justify-between">
-          <h1 className="text-title text-text-primary">Symora</h1>
-          <div className="flex items-center gap-3">
+      <div className="mx-auto flex max-w-2xl flex-col gap-8">
+        <header className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-display text-text-primary">
+              {home
+                ? `${GREETING[home.greeting.partOfDay]}${home.greeting.displayName ? `, ${home.greeting.displayName.split(' ')[0]}` : ''}`
+                : 'Symora'}
+            </h1>
+            {home && <p className="mt-1 text-body-sm text-text-muted">{home.greeting.today}</p>}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
             <ThemeToggle />
             <Button variant="ghost" onClick={() => void signOutUser()}>
               Sign out
@@ -27,44 +56,54 @@ export function HomePage() {
           </div>
         </header>
 
-        <Card>
-          <h2 className="text-heading text-text-primary">Verified session</h2>
-          <p className="mt-1 text-body-sm text-text-muted">
-            This card is populated by <code>GET /api/me</code>, which only returns data
-            after your Firebase ID token is verified server-side.
-          </p>
+        {isLoading && (
+          <CardShell>
+            <p className="text-body-sm text-text-muted">Getting your day together…</p>
+          </CardShell>
+        )}
 
-          {isLoading && <p className="mt-4 text-body-sm text-text-muted">Loading…</p>}
-
-          {isError && (
-            <p className="mt-4 text-body-sm text-overdue">
-              {error instanceof Error ? error.message : 'Could not load your profile.'}
+        {isError && (
+          <CardShell>
+            <p className="text-body-sm text-overdue">
+              {error instanceof Error ? error.message : "Couldn't load your home screen."}
             </p>
-          )}
+          </CardShell>
+        )}
 
-          {me && (
-            <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-body-sm">
-              <dt className="text-text-muted">User id</dt>
-              <dd className="text-text-primary">{me.id}</dd>
-              <dt className="text-text-muted">Email</dt>
-              <dd className="text-text-primary">{me.email ?? '—'}</dd>
-              <dt className="text-text-muted">Timezone</dt>
-              <dd className="text-text-primary">{me.timezone}</dd>
-              <dt className="text-text-muted">Preferred language</dt>
-              <dd className="text-text-primary">{me.preferredLanguage}</dd>
-            </dl>
-          )}
-        </Card>
+        {home && (
+          <>
+            <AttentionCard items={home.attention} />
 
-        <ChatPanel />
+            <PaymentSummary payments={home.payments} />
+
+            {home.todayTasks.length > 0 && (
+              <TaskList
+                tasks={home.todayTasks}
+                onComplete={(task) => updateCommitment.mutate({ id: task.id, status: 'done' })}
+              />
+            )}
+
+            {home.upcomingImportantDates.length > 0 && (
+              <CommitmentList
+                title="Coming up"
+                commitments={home.upcomingImportantDates}
+                emptyMessage="Nothing on the calendar."
+              />
+            )}
+
+            <AskSymora chat={chat} suggestions={home.suggestions} />
+          </>
+        )}
+
+        {!home && !isLoading && <AskSymora chat={chat} suggestions={[]} />}
+
+        <PastePanel chat={chat} />
+
+        <DraftPanel />
 
         <CommitmentsPanel />
 
         <FinancePanel />
-
-        <PastePanel />
-
-        <DraftPanel />
 
         <MemoryPanel />
       </div>

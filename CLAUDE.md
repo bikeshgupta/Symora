@@ -67,12 +67,13 @@ to WhatsApp and email.
 
 ## Current status
 
-Phases 1-5 are complete: foundation/auth/DB; the Ask Symora chat pipeline over the
+Phases 1-7 are complete: foundation/auth/DB; the Ask Symora chat pipeline over the
 typed tool registry; personal memory; the commitments umbrella with deterministic
-finance (obligations vs instances, bounded idempotent generation, derived
-overdue/outstanding), tasks, reminders with lead times and recurring important dates;
-and paste-to-Symora, message drafting and the WhatsApp/email handoff.
-Phase 6 — the personalized home and the seven trusted UI components — is next.
+finance, tasks and reminders; paste-to-Symora, drafting and the WhatsApp/email handoff;
+the personalized home with the seven trusted components on one `CardShell`; and voice
+input with Hindi/Hinglish handling, temporal anchors computed in code, and an NLP
+regression corpus.
+Phase 8 — notifications, usage/quota tracking and privacy basics — is next.
 
 See `PROGRESS.md` for the phase-by-phase checklist and acceptance criteria. Update it
 whenever a phase item is completed.
@@ -110,8 +111,8 @@ apps/web/              React PWA (Phase 1 scaffolds Vite/Tailwind/shadcn)
 api/                   Vercel serverless functions, one folder per API group
   _middleware/         auth middleware, request context, error contract, logger
 packages/core/src/
-  domain/              deterministic domain services (memory, commitments,
-                       finance, tasks, reminders, drafting)
+  domain/              deterministic domain services (memory, commitments, finance,
+                       tasks, reminders, drafting, home, temporal)
   ai/orchestrator/     language detection, routing, intent extraction, confidence
   ai/tools/            typed tool registry
   repositories/        the only layer that issues database queries

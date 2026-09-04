@@ -23,3 +23,4 @@ export type * from './calendar-adapter';
  */
 export { buildWhatsAppLink, normalizePhone, whatsAppAdapter } from './whatsapp-adapter';
 export { buildMailtoLink, mailtoAdapter } from './mailto-adapter';
+export { openAiSpeechAdapter } from './openai-speech-adapter';
