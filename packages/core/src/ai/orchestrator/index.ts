@@ -1,5 +1,6 @@
 export { detectLanguage } from './language';
-export { extractIntent, type ExtractionResult } from './intent-extraction';
+export { extractIntent, type ExtractionResult, type ExtractIntentOptions } from './intent-extraction';
+export { buildMemoryContext, type MemoryContextEntry } from './memory-context';
 export { decide, CONFIDENCE_THRESHOLD, type PipelineDecision } from './confidence-risk';
 export {
   composeConversational,

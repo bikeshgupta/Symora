@@ -104,11 +104,23 @@ export const calculateMonthlyRequirementArgs = z
 
 export const rememberPreferenceArgs = z
   .object({
-    key: z.string().min(1).describe('A stable lookup key, e.g. "spouse_name".'),
-    value: z.string().min(1),
-    memoryType: z.enum(['preference', 'fact']).default('preference'),
+    key: z
+      .string()
+      .min(1)
+      .describe(
+        'A stable lookup key. For an alias this is the nickname itself, e.g. "mummy"; ' +
+          'otherwise a short snake_case name, e.g. "spouse_name".',
+      ),
+    value: z.string().min(1).describe('What the key refers to, e.g. "Sunita".'),
+    // The memory *types* from .claude/rules/data-model.md, not new intents: aliases and
+    // corrections are recorded through this same single memory-write intent, keeping
+    // the V1 intent list at twelve.
+    memoryType: z.enum(['preference', 'fact', 'alias', 'correction']).default('preference'),
   })
-  .describe('Explicitly remember a stated fact or preference.');
+  .describe(
+    'Explicitly remember something the user stated about themselves: a preference, a stable fact, ' +
+      'a nickname/alias for a person, or a correction to something previously recorded.',
+  );
 
 export const draftMessageArgs = z
   .object({

@@ -67,7 +67,10 @@ to WhatsApp and email.
 
 ## Current status
 
-Skeleton and documentation only — no feature code yet. Phase 1 has not started.
+Phases 1-3 are complete: foundation/auth/DB, the Ask Symora chat pipeline over the
+typed tool registry, and personal memory (explicit storage, aliases, corrections,
+effective-dated superseding, relevant-memory retrieval, and the memory screen).
+Phase 4 — commitments, finance, tasks and reminders — is next.
 
 See `PROGRESS.md` for the phase-by-phase checklist and acceptance criteria. Update it
 whenever a phase item is completed.
@@ -110,7 +113,7 @@ packages/core/src/
   ai/orchestrator/     language detection, routing, intent extraction, confidence
   ai/tools/            typed tool registry
   repositories/        the only layer that issues database queries
-  adapters/            side-adapter interfaces (type-only stubs today)
+  adapters/            side-adapter interfaces (+ the OpenAI AIProvider implementation)
   types/               shared domain and API types
 supabase/migrations/   versioned SQL migrations
 docs/architecture/     architecture notes and ADRs

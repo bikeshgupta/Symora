@@ -18,6 +18,7 @@ import {
   getSupabaseServiceClient,
   INTENT_NAMES,
   isHighImpactIntent,
+  memoryService,
   openAiProvider,
   runTool,
   type ChatResponseBody,
@@ -121,8 +122,20 @@ export default withApiHandler(async (req, res, ctx) => {
     return;
   }
 
-  // -- A fresh turn: detect intent. --
-  const extraction = await extractIntent(openAiProvider, body.text, language);
+  // -- A fresh turn: load the memories relevant to it, then detect intent. --
+  // Retrieval is deterministic and scoped to what this turn is about
+  // (.claude/rules/ai-pipeline.md: never dump the user's whole memory into the prompt),
+  // and only rows currently in effect are considered — a superseded fact must not
+  // influence a new answer.
+  const memories = await memoryService.retrieveRelevant(
+    client,
+    ctx.user.id,
+    { text: body.text },
+    now,
+    ctx.user.timezone,
+  );
+
+  const extraction = await extractIntent(openAiProvider, body.text, language, { memories });
   await aiUsageRepository.recordAiUsage(client, {
     userId: ctx.user.id,
     provider: openAiProvider.name,
@@ -145,7 +158,16 @@ export default withApiHandler(async (req, res, ctx) => {
   // always high-impact, regardless of the nested extraction's own confidence).
   if (extraction.intent === 'interpret_pasted_message') {
     const pastedText = (extraction.args as { pastedText?: string } | null)?.pastedText ?? '';
-    const nested = await extractIntent(openAiProvider, pastedText, language);
+    // Re-retrieve against the pasted text itself: what is relevant to "here is a
+    // message from my landlord" is rarely what is relevant to the message's contents.
+    const pastedMemories = await memoryService.retrieveRelevant(
+      client,
+      ctx.user.id,
+      { text: pastedText, intent: 'interpret_pasted_message' },
+      now,
+      ctx.user.timezone,
+    );
+    const nested = await extractIntent(openAiProvider, pastedText, language, { memories: pastedMemories });
     await aiUsageRepository.recordAiUsage(client, {
       userId: ctx.user.id,
       provider: openAiProvider.name,

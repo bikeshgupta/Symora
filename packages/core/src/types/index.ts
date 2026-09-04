@@ -5,6 +5,7 @@ export * from './intents';
 export type * from './chat';
 export type * from './commitment';
 export type * from './financial';
-export type * from './memory';
+export type { MemoryType, MemorySource, MemoryValue, MemoryRecord, MemoryView } from './memory';
+export { MEMORY_TYPES, memoryValueSchema, readMemoryText } from './memory';
 export type * from './conversation';
 export type * from './ai-usage';

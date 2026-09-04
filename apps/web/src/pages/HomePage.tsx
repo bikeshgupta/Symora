@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { ChatPanel } from '@/components/ChatPanel';
+import { MemoryPanel } from '@/components/MemoryPanel';
 
 export function HomePage() {
   const { signOutUser } = useAuth();
@@ -52,6 +53,8 @@ export function HomePage() {
         </Card>
 
         <ChatPanel />
+
+        <MemoryPanel />
       </div>
     </main>
   );

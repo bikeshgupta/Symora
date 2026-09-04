@@ -23,6 +23,7 @@ import {
   type IntentName,
 } from '../../types/intents';
 import type { MessageLanguage } from '../../types/conversation';
+import { readMemoryText } from '../../types/memory';
 
 export interface ToolContext {
   client: SupabaseClient;
@@ -42,6 +43,10 @@ export interface ToolResult {
 
 function listText(items: string[]): string {
   return items.join(', ');
+}
+
+function memoryText(record: { valueJson: unknown } | null): string {
+  return record ? readMemoryText(record.valueJson) : 'nothing';
 }
 
 async function handleCreateCommitment(ctx: ToolContext, args: IntentArgs<'create_commitment'>): Promise<ToolResult> {
@@ -209,13 +214,19 @@ async function handleCalculateMonthlyRequirement(
 }
 
 async function handleRememberPreference(ctx: ToolContext, args: IntentArgs<'remember_preference'>): Promise<ToolResult> {
-  const memory = await memoryService.rememberPreference(ctx.client, ctx.userId, args, ctx.now, ctx.timezone);
-  return {
-    intent: 'remember_preference',
-    outcome: 'success',
-    summary: `Got it — I'll remember that ${args.key} is ${args.value}.`,
-    data: memory,
-  };
+  const result = await memoryService.rememberPreference(ctx.client, ctx.userId, args, ctx.now, ctx.timezone);
+  const subject = memoryService.normalizeKey(args.key).replace(/_/g, ' ');
+
+  // Correcting an earlier value is worth saying out loud — silently replacing something
+  // the user told Symora last month is exactly the surprise that erodes trust in it.
+  const summary =
+    result.outcome === 'unchanged'
+      ? `I already had that — ${subject} is ${args.value}.`
+      : result.outcome === 'superseded'
+        ? `Updated: ${subject} is now ${args.value} (was ${memoryText(result.supersededMemory)}).`
+        : `Got it — I'll remember that ${subject} is ${args.value}.`;
+
+  return { intent: 'remember_preference', outcome: 'success', summary, data: result.memory };
 }
 
 async function handleDraftMessage(ctx: ToolContext, args: IntentArgs<'draft_message'>): Promise<ToolResult> {

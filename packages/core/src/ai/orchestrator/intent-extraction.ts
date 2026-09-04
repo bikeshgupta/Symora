@@ -11,6 +11,7 @@ import type { AIProvider, AITokenUsage } from '../../adapters/ai-provider';
 import { buildToolDefinitions } from '../tools/registry';
 import { INTENT_NAMES, type IntentName } from '../../types/intents';
 import type { MessageLanguage } from '../../types/conversation';
+import { buildMemoryContext, type MemoryContextEntry } from './memory-context';
 
 export interface ExtractionResult {
   intent: IntentName | null;
@@ -40,16 +41,30 @@ function systemPrompt(language: MessageLanguage): string {
   ].join(' ');
 }
 
+export interface ExtractIntentOptions {
+  /**
+   * Memories already selected as relevant to this turn (domain/memory/relevance.ts).
+   * Rendered as fenced reference data, never as instructions — see memory-context.ts.
+   * Passing them is what lets the model resolve "mummy" or "the usual time" instead of
+   * asking again, which is Phase 3's acceptance criterion.
+   */
+  memories?: MemoryContextEntry[];
+}
+
 export async function extractIntent(
   aiProvider: AIProvider,
   text: string,
   language: MessageLanguage,
+  options: ExtractIntentOptions = {},
 ): Promise<ExtractionResult> {
+  const memoryContext = buildMemoryContext(options.memories ?? []);
+
   const result = await aiProvider.complete({
     tier: 'cheap',
     temperature: 0.2,
     messages: [
       { role: 'system', content: systemPrompt(language) },
+      ...(memoryContext ? [{ role: 'system' as const, content: memoryContext }] : []),
       { role: 'user', content: text },
     ],
     tools: buildToolDefinitions(),

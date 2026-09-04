@@ -3,14 +3,14 @@
 Phase-by-phase build tracker. Source of truth for scope and acceptance criteria:
 `docs/Symora_V1_Requirements_and_Architecture_FULL.md`.
 
-**Overall status: not started.** Skeleton and documentation only — no feature code yet.
+**Overall status: Phases 1-3 complete.** Phase 4 is next.
 
 | Phase | Status | Estimate |
 | --- | --- | --- |
 | 0 — Skeleton and memory files | Done | — |
-| 1 — Foundation / Auth / DB | Not started | 10h |
-| 2 — Core Ask Symora + AI pipeline | Not started | 15h |
-| 3 — Personal memory | Not started | 12h |
+| 1 — Foundation / Auth / DB | Done | 10h |
+| 2 — Core Ask Symora + AI pipeline | Done | 15h |
+| 3 — Personal memory | Done | 12h |
 | 4 — Commitments + finance + tasks/reminders | Not started | 20h |
 | 5 — Paste/share + drafting + WhatsApp/email | Not started | 10h |
 | 6 — Personalized home + small dynamic UI | Not started | 10h |
@@ -129,22 +129,33 @@ environment):
 - [ ] "This month what all is pending?"
 - [ ] "Home loan kal pay kar diya."
 
-## Phase 3 — Personal memory — 12h — Not started
+## Phase 3 — Personal memory — 12h — Done
 
 Build:
 
-- [ ] Explicit memory storage
-- [ ] Aliases
-- [ ] Preferences
-- [ ] Correction memory
-- [ ] Relevant-memory retrieval
-- [ ] "What Symora knows about me"
-- [ ] Edit / delete memory
-- [ ] Effective-date support
+- [x] Explicit memory storage — written only via `remember_preference` or an explicit
+      user edit, never as a side effect of another intent
+- [x] Aliases — `memoryType: 'alias'`, keyed on the nickname itself
+- [x] Preferences
+- [x] Correction memory — a statement that replaces an earlier value is recorded with
+      `source: 'corrected'` and names what it replaced
+- [x] Relevant-memory retrieval — deterministic scoring in
+      `domain/memory/relevance.ts`, no second AI call
+- [x] "What Symora knows about me" — `MemoryPanel`, backed by `GET /api/memories`
+- [x] Edit / delete memory — `PATCH` / `DELETE /api/memories/:id`
+- [x] Effective-date support — `effective_to` is an exclusive end date; superseding
+      closes the old window and inserts a new row, enforced by a partial unique index
+      (migration 0007)
 
 Acceptance:
 
-- [ ] Learned information reduces repeated clarification
+- [x] Learned information reduces repeated clarification — relevant memories are loaded
+      before extraction and rendered as fenced reference data, so the model resolves
+      "mummy" or a known lead time instead of asking again
+
+Not yet verified against a live database: the migration and the repository queries have
+not been run against a real Supabase project in this session. See the note in Phase 9
+about a memory-service integration test.
 
 ## Phase 4 — Commitments + finance + tasks/reminders — 20h — Not started
 
@@ -313,6 +324,16 @@ Test:
 - [ ] Data deletion / export
 
 - [ ] Maintain an NLP regression corpus of messy real user phrases
+
+Follow-ups recorded during earlier phases:
+
+- [ ] Memory supersede (close old row + insert new) runs as two statements, not one
+      transaction — the Supabase JS client has no multi-statement transaction. The
+      partial unique index prevents two current rows; a Postgres function would also
+      make the pair atomic.
+- [ ] Integration test for the memory repository against a real database — the Phase 3
+      unit tests cover the pure decision logic, not the queries.
+- [ ] Cross-user access test for `/api/memories` and `/api/memories/:id`
 
 ---
 
