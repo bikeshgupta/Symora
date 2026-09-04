@@ -111,7 +111,9 @@ deliberately, not imported.
 
 ```
 apps/web/              React PWA (Phase 1 scaffolds Vite/Tailwind/shadcn)
-api/                   Vercel serverless functions, one folder per API group
+api/                   one catch-all serverless function (see API groups below)
+  [[...route]].ts      the only function; dispatches via _routes/router.ts
+  _routes/             the actual handlers, one per endpoint
   _middleware/         auth middleware, request context, error contract, logger
 packages/core/src/
   domain/              deterministic domain services (memory, commitments, finance,
@@ -130,8 +132,15 @@ docs/architecture/     architecture notes and ADRs
 ## API groups
 
 `/api/me`, `/api/chat`, `/api/memories`, `/api/commitments`, `/api/tasks`,
-`/api/reminders`, `/api/finance`, `/api/drafts`, `/api/notifications`, `/api/usage`,
-`/api/privacy/export`, `/api/privacy/delete`.
+`/api/reminders`, `/api/finance`, `/api/drafts`, `/api/home`, `/api/voice/transcribe`,
+`/api/notifications`, `/api/usage`, `/api/privacy/export`, `/api/privacy/delete`.
+
+**All of them are served by one serverless function.** Vercel makes each file under
+`api/` its own function and the Hobby plan allows twelve; the API groups exceed that, so
+handlers live in `api/_routes/` (a leading underscore keeps Vercel from treating them as
+functions) and `api/[[...route]].ts` dispatches to them through an explicit route table.
+Adding an endpoint means adding a handler there and a row in `api/_routes/router.ts` —
+never a new file directly under `api/`.
 
 ## Working conventions
 

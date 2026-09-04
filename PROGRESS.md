@@ -419,6 +419,9 @@ Follow-ups recorded during earlier phases:
 - [ ] Integration test for the memory repository against a real database — the Phase 3
       unit tests cover the pure decision logic, not the queries.
 - [ ] Cross-user access test for `/api/memories` and `/api/memories/:id`
+- [ ] The whole API is one serverless function (`api/[[...route]].ts`) to stay under
+      Vercel's Hobby-plan limit of twelve. On a paid plan the handlers in `api/_routes/`
+      could go back to file-based routing; the route table makes either shape cheap.
 - [ ] Web Push delivery for notifications (service worker + VAPID), so reminders reach
       a user who does not open the app
 - [ ] Cross-user access tests for the Phase 4-8 endpoints (`/api/commitments`,
