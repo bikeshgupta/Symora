@@ -15,6 +15,38 @@ import type {
   AIToolCall,
 } from './ai-provider';
 
+/**
+ * A configured-but-blank env var is the normal shape of a half-filled `.env`, and
+ * `??` does not catch it: `Number('')` is 0, which the SDK reads as "time out
+ * immediately" rather than "not configured". Anything non-numeric or non-positive
+ * falls back to the default instead of silently becoming a broken timeout.
+ */
+export function readTimeoutMs(raw: string | undefined, fallbackMs: number): number {
+  if (!raw) return fallbackMs;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackMs;
+}
+
+/**
+ * Parameters a given model turned down, remembered for the life of the process.
+ *
+ * Newer reasoning families take only the default temperature and want
+ * `max_completion_tokens` where the older chat models took `max_tokens`. Which model
+ * refuses what changes with every release, and this adapter is deliberately
+ * model-agnostic — the ids come from env precisely so it does not go stale. So instead
+ * of a hardcoded model list, send what the caller asked for, read the parameter named
+ * in OpenAI's 400, and retry once without it. One extra round-trip per model per
+ * process, and no list to maintain.
+ */
+const rejectedParams = new Map<string, Set<AdjustableParam>>();
+
+type AdjustableParam = 'temperature' | 'max_tokens';
+
+function unsupportedParam(err: unknown): AdjustableParam | null {
+  if (!(err instanceof OpenAI.APIError) || err.status !== 400) return null;
+  return err.param === 'temperature' || err.param === 'max_tokens' ? err.param : null;
+}
+
 let client: OpenAI | null = null;
 
 function getClient(): OpenAI {
@@ -60,29 +92,51 @@ function mapFinishReason(reason: string | null | undefined): AICompletionResult[
   }
 }
 
+async function createCompletion(
+  model: string,
+  request: AICompletionRequest,
+  timeoutMs: number,
+): Promise<OpenAI.Chat.ChatCompletion> {
+  const rejected = rejectedParams.get(model) ?? new Set<AdjustableParam>();
+
+  const body: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
+    model,
+    messages: toOpenAiMessages(request.messages),
+    tools: request.tools?.map((tool) => ({
+      type: 'function' as const,
+      function: { name: tool.name, description: tool.description, parameters: tool.parameters },
+    })),
+    response_format: request.responseSchema
+      ? { type: 'json_schema', json_schema: { name: 'response', schema: request.responseSchema, strict: false } }
+      : undefined,
+  };
+  if (!rejected.has('temperature')) body.temperature = request.temperature;
+  if (request.maxOutputTokens !== undefined) {
+    if (rejected.has('max_tokens')) body.max_completion_tokens = request.maxOutputTokens;
+    else body.max_tokens = request.maxOutputTokens;
+  }
+
+  try {
+    return await getClient().chat.completions.create(body, { timeout: timeoutMs });
+  } catch (err) {
+    const param = unsupportedParam(err);
+    // Only ever retry for a parameter this model has not already refused, so the
+    // recursion is bounded by the size of AdjustableParam.
+    if (!param || rejected.has(param)) throw err;
+    rejected.add(param);
+    rejectedParams.set(model, rejected);
+    return createCompletion(model, request, timeoutMs);
+  }
+}
+
 export const openAiProvider: AIProvider = {
   name: 'openai',
 
   async complete(request: AICompletionRequest): Promise<AICompletionResult> {
     const model = modelForTier(request.tier);
-    const timeoutMs = request.timeoutMs ?? Number(process.env.AI_REQUEST_TIMEOUT_MS ?? 30_000);
+    const timeoutMs = request.timeoutMs ?? readTimeoutMs(process.env.AI_REQUEST_TIMEOUT_MS, 30_000);
 
-    const response = await getClient().chat.completions.create(
-      {
-        model,
-        messages: toOpenAiMessages(request.messages),
-        temperature: request.temperature,
-        max_tokens: request.maxOutputTokens,
-        tools: request.tools?.map((tool) => ({
-          type: 'function' as const,
-          function: { name: tool.name, description: tool.description, parameters: tool.parameters },
-        })),
-        response_format: request.responseSchema
-          ? { type: 'json_schema', json_schema: { name: 'response', schema: request.responseSchema, strict: false } }
-          : undefined,
-      },
-      { timeout: timeoutMs },
-    );
+    const response = await createCompletion(model, request, timeoutMs);
 
     const choice = response.choices[0];
     const message = choice?.message;

@@ -11,6 +11,7 @@
  */
 
 import OpenAI from 'openai';
+import { readTimeoutMs } from './openai-provider';
 import type {
   SpeechAdapter,
   SpeechLanguageHint,
@@ -43,7 +44,7 @@ export const openAiSpeechAdapter: SpeechAdapter = {
   name: 'openai-whisper',
 
   async transcribe(request: TranscriptionRequest): Promise<TranscriptionResult> {
-    const timeoutMs = request.timeoutMs ?? Number(process.env.SPEECH_REQUEST_TIMEOUT_MS ?? 30_000);
+    const timeoutMs = request.timeoutMs ?? readTimeoutMs(process.env.SPEECH_REQUEST_TIMEOUT_MS, 30_000);
 
     // The SDK wants a File; the extension has to match the actual container or the
     // service rejects it, so it is derived from the MIME type rather than hardcoded.
