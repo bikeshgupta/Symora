@@ -15,7 +15,9 @@ import * as tasksService from '../../domain/tasks/tasks-service';
 import * as remindersService from '../../domain/reminders/reminders-service';
 import * as financeService from '../../domain/finance/finance-service';
 import * as memoryService from '../../domain/memory/memory-service';
-import { draftMessage } from '../../domain/drafting/draft-service';
+import { draftMessage, type DraftMessageResult } from '../../domain/drafting/draft-service';
+import { draftMessageOffline } from '../offline/template-drafter';
+import { getAiMode } from '../../config/runtime-mode';
 import {
   INTENT_NAMES,
   intentArgsSchemas,
@@ -229,8 +231,31 @@ async function handleRememberPreference(ctx: ToolContext, args: IntentArgs<'reme
   return { intent: 'remember_preference', outcome: 'success', summary, data: result.memory };
 }
 
+/**
+ * Drafting through a chat turn, with the same offline path `/api/drafts` already takes.
+ *
+ * This tool used to go straight to the provider in every mode, so a turn that reached
+ * drafting with no key configured — or with a key whose account is out of credit — threw
+ * out of `runTool` and 500'd `/api/chat`, while the identical request through
+ * `/api/drafts` was answered from templates. Same rule as extraction
+ * (ai/orchestrator/resilient-extraction.ts): use the model when it answers, fall back to
+ * the deterministic path when it does not. The templates are honestly worse prose, not a
+ * failure — they are meant to be edited before sending, which the handoff assumes.
+ */
+async function draftWithFallback(
+  ctx: ToolContext,
+  args: IntentArgs<'draft_message'>,
+): Promise<DraftMessageResult> {
+  if (getAiMode() === 'offline') return draftMessageOffline(args, ctx.language);
+  try {
+    return await draftMessage(ctx.aiProvider, args, ctx.language);
+  } catch {
+    return draftMessageOffline(args, ctx.language);
+  }
+}
+
 async function handleDraftMessage(ctx: ToolContext, args: IntentArgs<'draft_message'>): Promise<ToolResult> {
-  const draft = await draftMessage(ctx.aiProvider, args, ctx.language);
+  const draft = await draftWithFallback(ctx, args);
   return {
     intent: 'draft_message',
     outcome: 'success',

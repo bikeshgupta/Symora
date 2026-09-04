@@ -13,7 +13,6 @@ import {
   composeToolResult,
   conversationsRepository,
   detectLanguage,
-  extractIntent,
   getArgsSchema,
   getSupabaseServiceClient,
   INTENT_NAMES,
@@ -21,6 +20,8 @@ import {
   categorizePastedText,
   decideTurn,
   extractIntentOffline,
+  extractIntentResilient,
+  DEGRADED_NO_INTENT_TEXT,
   getAiMode,
   memoryService,
   needsRelativeDateClarification,
@@ -157,10 +158,20 @@ export default withApiHandler(async (req, res, ctx) => {
       ? await memoryService.retrieveRelevant(client, ctx.user.id, { text: body.text }, now, ctx.user.timezone)
       : [];
 
+  // A configured provider that fails mid-turn falls back to the same rule parser that
+  // serves offline mode rather than 500ing the request, and says so when it does
+  // (ai/orchestrator/resilient-extraction.ts).
   const extraction =
     aiMode === 'offline'
-      ? extractIntentOffline(body.text, language, { temporal })
-      : await extractIntent(openAiProvider, body.text, language, { memories, temporal });
+      ? { ...extractIntentOffline(body.text, language, { temporal }), degraded: false }
+      : await extractIntentResilient(openAiProvider, body.text, language, {
+          memories,
+          temporal,
+          onProviderFailure: (error) =>
+            ctx.logger.warn('AI provider failed; fell back to the rule-based parser.', {
+              cause: error instanceof Error ? error.message : String(error),
+            }),
+        });
 
   // Recorded in both modes. An offline turn costs nothing and reports zero tokens, which
   // is exactly what the usage screen should show — a gap would look like lost data.
@@ -176,7 +187,11 @@ export default withApiHandler(async (req, res, ctx) => {
   });
 
   if (!extraction.intent) {
-    const composed = composeConversational(extraction.text ?? "I'm not sure I understood that.");
+    const composed = composeConversational(
+      extraction.degraded
+        ? DEGRADED_NO_INTENT_TEXT
+        : (extraction.text ?? "I'm not sure I understood that."),
+    );
     await respond(composed.text, composed.ui, null);
     return;
   }
@@ -204,10 +219,14 @@ export default withApiHandler(async (req, res, ctx) => {
         : [];
     const nested =
       aiMode === 'offline'
-        ? extractIntentOffline(pastedText, language, { temporal })
-        : await extractIntent(openAiProvider, pastedText, language, {
+        ? { ...extractIntentOffline(pastedText, language, { temporal }), degraded: false }
+        : await extractIntentResilient(openAiProvider, pastedText, language, {
             memories: pastedMemories,
             temporal,
+            onProviderFailure: (error) =>
+              ctx.logger.warn('AI provider failed on pasted text; fell back to the rule-based parser.', {
+                cause: error instanceof Error ? error.message : String(error),
+              }),
           });
     await aiUsageRepository.recordAiUsage(client, {
       userId: ctx.user.id,
@@ -223,8 +242,9 @@ export default withApiHandler(async (req, res, ctx) => {
     const composed = nested.intent
       ? composeConfirmation(nested.intent, nested.args ?? {}, pasteCategory)
       : composeConversational(
-          nested.text ??
-            "I looked at that text but couldn't identify an action to take.",
+          nested.degraded
+            ? DEGRADED_NO_INTENT_TEXT
+            : (nested.text ?? "I looked at that text but couldn't identify an action to take."),
         );
     await respond(composed.text, composed.ui, nested.intent ?? 'interpret_pasted_message');
     return;
