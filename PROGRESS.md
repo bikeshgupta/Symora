@@ -3,7 +3,11 @@
 Phase-by-phase build tracker. Source of truth for scope and acceptance criteria:
 `docs/Symora_V1_Requirements_and_Architecture_FULL.md`.
 
-**Overall status: Phases 1-5 complete.** Phase 6 is next.
+**Overall status: Phases 1-8 complete.** Phase 9 (testing and hardening) is next.
+
+**Symora runs with no AI provider key.** Every deterministic feature works either way;
+the language layer falls back to a rule-based parser, drafts to templates, and voice to
+the browser's own recogniser. See "Offline mode" below.
 
 | Phase | Status | Estimate |
 | --- | --- | --- |
@@ -13,9 +17,9 @@ Phase-by-phase build tracker. Source of truth for scope and acceptance criteria:
 | 3 — Personal memory | Done | 12h |
 | 4 — Commitments + finance + tasks/reminders | Done | 20h |
 | 5 — Paste/share + drafting + WhatsApp/email | Done | 10h |
-| 6 — Personalized home + small dynamic UI | Not started | 10h |
-| 7 — Voice + Hindi/Hinglish | Not started | 10h |
-| 8 — Notifications + usage + privacy basics | Not started | 8h |
+| 6 — Personalized home + small dynamic UI | Done | 10h |
+| 7 — Voice + Hindi/Hinglish | Done | 10h |
+| 8 — Notifications + usage + privacy basics | Done | 8h |
 | 9 — Testing / hardening | Not started | 15–25h |
 
 Total target: ~110–120h.
@@ -236,83 +240,153 @@ Handoff:
 - [x] Share-to-Symora — `MessagingAdapter` / `EmailAdapter` interfaces carry the shape a
       native share extension would implement later; no extension is built
 
-## Phase 6 — Personalized home + small dynamic UI — 10h — Not started
+## Phase 6 — Personalized home + small dynamic UI — 10h — Done
 
-Home:
+Home — one `GET /api/home` call, all of it computed server-side by
+`domain/home/home-service.ts`:
 
-- [ ] Greeting
-- [ ] Needs Attention
-- [ ] Upcoming payment
-- [ ] Today task
-- [ ] Important date
-- [ ] Overdue item
-- [ ] Contextual suggestions
-- [ ] Ask Symora input
+- [x] Greeting — part of day resolved from the wall-clock hour in the user's timezone
+- [x] Needs Attention — ranked, capped at 5, total ordering so it never reshuffles
+- [x] Upcoming payment
+- [x] Today task
+- [x] Important date — surfaced 14 days ahead
+- [x] Overdue item — ranked above everything else
+- [x] Contextual suggestions — chosen from what is actually on screen; tapping one fills
+      the Ask Symora input rather than executing, so a chip cannot bypass confirmation
+- [x] Ask Symora input
 
-Trusted V1 UI components:
+Trusted V1 UI components (`apps/web/src/components/trusted/`):
 
-- [ ] `AttentionCard`
-- [ ] `PaymentSummary`
-- [ ] `CommitmentList`
-- [ ] `TaskList`
-- [ ] `ConfirmationCard`
-- [ ] `MessageDraftCard`
-- [ ] `SuggestionChip`
+- [x] `AttentionCard`
+- [x] `PaymentSummary`
+- [x] `CommitmentList`
+- [x] `TaskList`
+- [x] `ConfirmationCard`
+- [x] `MessageDraftCard`
+- [x] `SuggestionChip`
 
 Component rules (see `.claude/rules/design-system.md`):
 
-- [ ] All seven share one `CardShell` — same radius, padding rhythm, and elevation
-- [ ] Status communicated by colour **and** text or icon in every component, never
-      colour alone
-- [ ] `ConfirmationCard` visually distinct from every passive card
-- [ ] Every screen checked in both light and dark themes
+- [x] All seven share one `CardShell` — same radius, padding rhythm, and elevation.
+      `SuggestionChip` is the documented exception (pill, recedes)
+- [x] Status communicated by colour **and** text or icon — `StatusPill` makes `label` a
+      required prop, so a bare coloured dot cannot be built
+- [x] `ConfirmationCard` visually distinct — the 2px primary border via CardShell's
+      `gated` emphasis, which nothing else uses
+- [ ] Every screen checked in both light and dark themes — **needs a real browser**;
+      tokens are wired, but no one has looked at it
 
-- [ ] Avoid a generic dashboard
+- [x] Avoid a generic dashboard — the home ranks and caps rather than listing everything
 
-## Phase 7 — Voice + Hindi/Hinglish — 10h — Not started
+## Phase 7 — Voice + Hindi/Hinglish — 10h — Done
 
 Build:
 
-- [ ] Push-to-talk
-- [ ] Speech-to-text
-- [ ] Raw transcript
-- [ ] Language detection
-- [ ] Hindi / Hinglish interpretation
-- [ ] Confirmation for ambiguous sensitive values
+- [x] Push-to-talk — `useVoiceInput`, MediaRecorder with a negotiated mime type
+- [x] Speech-to-text — `openAiSpeechAdapter` behind the `SpeechAdapter` interface;
+      `POST /api/voice/transcribe`
+- [x] Raw transcript — returned unedited and shown to the user before anything acts on
+      it; transcription and interpretation are two separate steps on purpose
+- [x] Language detection — extended from the NLP corpus (see below)
+- [x] Hindi / Hinglish interpretation — the extraction prompt now carries temporal
+      anchors computed in code, so "kal", "Saturday" and "agle 5 din" resolve against
+      real dates in the user's timezone instead of the model guessing what today is
+- [x] Confirmation for ambiguous sensitive values — a voice turn carrying a monetary
+      amount always confirms (`requiresSourceConfirmation`), and an ambiguous relative
+      date with no tense to settle it clarifies rather than guessing
 
-Acceptance:
+Acceptance — the deterministic halves (language, ambiguity, the risk gate) are asserted
+in `ai/orchestrator/nlp-corpus.test.ts`; which intent the model picks still needs a live
+key:
 
-- [ ] "Kal wali EMI bhar diya."
-- [ ] "Saturday electrician ko call karna yaad dila dena."
-- [ ] "Agle 5 din me kitna payment baki hai?"
+- [x] "Kal wali EMI bhar diya." — detected Hinglish, past tense settles "kal"
+- [x] "Saturday electrician ko call karna yaad dila dena." — detected Hinglish
+- [x] "Agle 5 din me kitna payment baki hai?" — detected Hinglish
+- [ ] End-to-end through a live OpenAI key — not run
 
-## Phase 8 — Notifications + usage + privacy basics — 8h — Not started
+NLP regression corpus started at `ai/orchestrator/nlp-corpus.test.ts`, covering both
+phases' acceptance phrases. It already earned its keep: "parso appointment" was being
+detected as English because no marker in it was listed.
 
-Notifications:
+## Phase 8 — Notifications + usage + privacy basics — 8h — Done
 
-- [ ] Due payment
-- [ ] Task
-- [ ] Birthday
-- [ ] Reminder
+Notifications (`domain/notifications/`, migration 0009, `/api/notifications`):
 
-Usage:
+- [x] Due payment — fires on the due date and every day it stays late; a partial payment
+      is chased for the remainder
+- [x] Task
+- [x] Birthday — via important dates, off the next occurrence rather than the anchor
+- [x] Reminder — honours `leadDays`, so "2 days before" fires on the lead date *and* the
+      due date
 
-- [ ] Requests
-- [ ] Tokens
-- [ ] Estimated cost
-- [ ] User allowance
-- [ ] Reset date
+Generation is derived from commitments and instances, not queued ahead, and is
+idempotent via a unique `dedupe_key` of (source, type, date). V1 has no scheduler, so
+generation runs on every read of the inbox and the app catches up when opened; a
+background job can call the same service later without producing duplicates.
 
-Privacy:
+- [ ] Push delivery — **not built.** Notifications are in-app only. Web Push needs a
+      service worker subscription and VAPID keys, which is a deployment decision, not
+      code this phase should have guessed at.
 
-- [ ] View memories
-- [ ] Delete memory
-- [ ] Export data
-- [ ] Delete account
-- [ ] Clear data-access wording
-- [ ] Privacy principle honoured: "Symora knows what you intentionally tell, type,
-      paste, or share."
-- [ ] SMS is not read automatically in V1
+Usage (`/api/usage`):
+
+- [x] Requests
+- [x] Tokens
+- [x] Estimated cost
+- [x] User allowance — `AI_MONTHLY_REQUEST_ALLOWANCE`; unset means unlimited, not zero
+- [x] Reset date — first of next month in the user's timezone
+
+Privacy (`/api/privacy/export`, `/api/privacy/delete`, `PrivacyPanel`):
+
+- [x] View memories
+- [x] Delete memory
+- [x] Export data — one JSON file, served as a download, opening with a plain statement
+      of what Symora does and does not collect
+- [x] Delete account — one delete cascading from `users` across every table, so it is
+      atomic; requires the user to type DELETE. The Firebase auth user is not removed —
+      that is a separate system and the client signs out instead
+- [x] Clear data-access wording — stated in the panel next to the controls
+- [x] Privacy principle honoured
+- [x] SMS is not read automatically in V1
+
+## Offline mode — running without an AI provider
+
+Added alongside Phase 8 so the app can be piloted before any AI subscription exists.
+`getAiMode()` reads configuration only (never a request) and needs both `OPENAI_API_KEY`
+and `AI_MODEL_CHEAP` to leave offline mode.
+
+Unchanged without a key — these never involved AI:
+
+- [x] Auth, profile, the home screen and its ranking
+- [x] Commitments, tasks, reminders, important dates
+- [x] Finance: obligations, instances, totals, mark paid, overdue
+- [x] Memory: add, list, edit, delete, effective-dated superseding
+- [x] Notifications, usage, export, delete
+- [x] WhatsApp and email handoff links
+
+Substituted without a key:
+
+- [x] Intent extraction → `ai/offline/rule-parser.ts`, a pattern matcher covering the
+      twelve V1 intents in English and Hinglish. It reports honest confidence, so a
+      partial match falls below the threshold and the pipeline asks instead of writing.
+      Its output is validated against the same tool schemas the model path uses.
+- [x] Relative dates and amounts → `ai/offline/date-parser.ts` and `amount-parser.ts`.
+      The amount parser refuses to read a day-of-month or a lead time as money.
+- [x] Message drafting → `ai/offline/template-drafter.ts`. Two variants, same handoff,
+      and the UI says they are templates.
+- [x] Voice → the browser's Web Speech API, on-device, no key. Chrome and Edge only;
+      Firefox hides the mic rather than offering something that fails.
+- [x] The UI says which mode it is in (`ModeBanner`), rather than letting a pilot user
+      conclude the understanding is simply poor.
+
+Known limits of offline mode, stated rather than hidden:
+
+- Memory does not inform extraction — the rule parser matches patterns, not context, so
+  "mummy ko call karna" does not resolve to Sunita. Memory itself is unaffected.
+- Phrasings far from the documented examples fall through to a message explaining what
+  Symora understands, rather than to a wrong write.
+- Paste interpretation categorises and routes to confirmation, but extracts less from
+  the pasted text than a model would.
 
 ## Phase 9 — Testing / hardening — 15–25h — Not started
 
@@ -333,7 +407,8 @@ Test:
 - [ ] Notifications
 - [ ] Data deletion / export
 
-- [ ] Maintain an NLP regression corpus of messy real user phrases
+- [x] Maintain an NLP regression corpus of messy real user phrases — started in Phase 7
+      (`ai/orchestrator/nlp-corpus.test.ts`); keep adding a row per real parsing bug
 
 Follow-ups recorded during earlier phases:
 
@@ -344,10 +419,21 @@ Follow-ups recorded during earlier phases:
 - [ ] Integration test for the memory repository against a real database — the Phase 3
       unit tests cover the pure decision logic, not the queries.
 - [ ] Cross-user access test for `/api/memories` and `/api/memories/:id`
-- [ ] Cross-user access tests for the Phase 4/5 endpoints (`/api/commitments`,
-      `/api/tasks`, `/api/reminders`, `/api/finance/*`, `/api/drafts`)
-- [ ] `ChatPanel` and `PastePanel` each hold their own `useChat` state, so they start
-      separate conversations. Phase 6 unifies them on the home screen.
+- [ ] The whole API is one serverless function (`api/[[...route]].ts`) to stay under
+      Vercel's Hobby-plan limit of twelve. On a paid plan the handlers in `api/_routes/`
+      could go back to file-based routing; the route table makes either shape cheap.
+- [ ] Web Push delivery for notifications (service worker + VAPID), so reminders reach
+      a user who does not open the app
+- [ ] Cross-user access tests for the Phase 4-8 endpoints (`/api/commitments`,
+      `/api/tasks`, `/api/reminders`, `/api/finance/*`, `/api/drafts`, `/api/home`,
+      `/api/voice/transcribe`, `/api/notifications`, `/api/usage`, `/api/privacy/*`)
+- [ ] Account deletion leaves the Firebase auth user in place; decide whether to remove
+      it server-side with the Admin SDK
+- [ ] Both themes checked in a real browser, and Mukta's tabular figures verified
+- [ ] Voice tested on a real device — MediaRecorder mime-type support varies most on
+      iOS Safari, which is exactly where this has not been run
+- [x] `ChatPanel` and `PastePanel` each held their own `useChat` state — fixed in
+      Phase 6: `HomePage` owns one instance and passes it to both surfaces.
 - [ ] Instance generation walks obligations one at a time (N+1 reads). Fine at V1
       volumes; worth a single windowed query if an account ever carries many obligations.
 

@@ -1,6 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 
+export interface RuntimeCapabilities {
+  aiMode: 'ai' | 'offline';
+  serverTranscription: boolean;
+  draftingIsTemplated: boolean;
+}
+
 export interface Me {
   id: string;
   firebaseUid: string;
@@ -10,6 +16,7 @@ export interface Me {
   preferredLanguage: 'en' | 'hi' | 'hinglish';
   createdAt: string;
   updatedAt: string;
+  capabilities: RuntimeCapabilities;
 }
 
 export function useMe() {

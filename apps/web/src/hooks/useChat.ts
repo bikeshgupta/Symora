@@ -8,6 +8,12 @@ type DraftProps = Extract<ChatUiSchema, { component: 'message-draft' }>['props']
 
 interface SendPayload {
   text: string;
+  /**
+   * Where the turn came from. It only ever widens the server's confirmation gate — a
+   * voice turn carrying an amount always confirms — so this can make Symora more
+   * careful, never less.
+   */
+  source?: 'chat' | 'voice';
   confirm?: { intent: IntentName; args: unknown };
 }
 
@@ -32,7 +38,7 @@ export function useChat() {
   });
 
   const sendMessage = useCallback(
-    (text: string) => {
+    (text: string, source: 'chat' | 'voice' = 'chat') => {
       setMessages((prev) => [
         ...prev,
         {
@@ -46,7 +52,7 @@ export function useChat() {
       ]);
       setPendingConfirmation(null);
       setDraft(null);
-      mutation.mutate({ text });
+      mutation.mutate({ text, source });
     },
     [mutation],
   );

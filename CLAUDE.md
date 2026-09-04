@@ -67,12 +67,16 @@ to WhatsApp and email.
 
 ## Current status
 
-Phases 1-5 are complete: foundation/auth/DB; the Ask Symora chat pipeline over the
-typed tool registry; personal memory; the commitments umbrella with deterministic
-finance (obligations vs instances, bounded idempotent generation, derived
-overdue/outstanding), tasks, reminders with lead times and recurring important dates;
-and paste-to-Symora, message drafting and the WhatsApp/email handoff.
-Phase 6 — the personalized home and the seven trusted UI components — is next.
+Phases 1-8 are complete. Phase 9 — testing and hardening — is next.
+
+**Symora runs with no AI provider key.** `getAiMode()` (config/runtime-mode.ts) reads
+configuration only and needs both `OPENAI_API_KEY` and `AI_MODEL_CHEAP` to leave offline
+mode. Offline, the language layer falls back to the rule-based parser in
+`ai/offline/`, drafting to templates, and voice to the browser's Web Speech API; every
+deterministic feature is unchanged. The substitution happens behind the `AIProvider`
+boundary, so adding a key later is configuration, not a rewrite. When adding a feature
+that needs the model, gate it on the mode and give offline a deterministic path or an
+honest message — never a silent failure.
 
 See `PROGRESS.md` for the phase-by-phase checklist and acceptance criteria. Update it
 whenever a phase item is completed.
@@ -107,11 +111,15 @@ deliberately, not imported.
 
 ```
 apps/web/              React PWA (Phase 1 scaffolds Vite/Tailwind/shadcn)
-api/                   Vercel serverless functions, one folder per API group
+api/                   one catch-all serverless function (see API groups below)
+  [[...route]].ts      the only function; dispatches via _routes/router.ts
+  _routes/             the actual handlers, one per endpoint
   _middleware/         auth middleware, request context, error contract, logger
 packages/core/src/
-  domain/              deterministic domain services (memory, commitments,
-                       finance, tasks, reminders, drafting)
+  domain/              deterministic domain services (memory, commitments, finance,
+                       tasks, reminders, drafting, home, temporal, notifications,
+                       usage, privacy)
+  ai/offline/          rule-based parser + template drafter used when no AI key is set
   ai/orchestrator/     language detection, routing, intent extraction, confidence
   ai/tools/            typed tool registry
   repositories/        the only layer that issues database queries
@@ -124,8 +132,15 @@ docs/architecture/     architecture notes and ADRs
 ## API groups
 
 `/api/me`, `/api/chat`, `/api/memories`, `/api/commitments`, `/api/tasks`,
-`/api/reminders`, `/api/finance`, `/api/drafts`, `/api/notifications`, `/api/usage`,
-`/api/privacy/export`, `/api/privacy/delete`.
+`/api/reminders`, `/api/finance`, `/api/drafts`, `/api/home`, `/api/voice/transcribe`,
+`/api/notifications`, `/api/usage`, `/api/privacy/export`, `/api/privacy/delete`.
+
+**All of them are served by one serverless function.** Vercel makes each file under
+`api/` its own function and the Hobby plan allows twelve; the API groups exceed that, so
+handlers live in `api/_routes/` (a leading underscore keeps Vercel from treating them as
+functions) and `api/[[...route]].ts` dispatches to them through an explicit route table.
+Adding an endpoint means adding a handler there and a row in `api/_routes/router.ts` —
+never a new file directly under `api/`.
 
 ## Working conventions
 

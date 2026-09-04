@@ -8,12 +8,38 @@ and helps you act on it.
 
 ## Status
 
-**Phases 1–2 (foundation/auth/database, and the Ask Symora chat + AI pipeline) built,
-not yet verified live.** The app runs end-to-end once real Firebase/Supabase/Vercel/
-OpenAI credentials are in place; see "Getting started" below and
-[`PROGRESS.md`](PROGRESS.md) for exactly what's left to check off.
+**Phases 1-8 complete**; Phase 9 (testing and hardening) is next. See
+[`PROGRESS.md`](PROGRESS.md) for the phase-by-phase plan and acceptance criteria.
 
-See [`PROGRESS.md`](PROGRESS.md) for the phase-by-phase plan and acceptance criteria.
+Nothing has yet been run against a live Supabase project, and no screen has been checked
+in a real browser. Read the Phase 9 follow-ups in `PROGRESS.md` before piloting.
+
+## Running without an AI key
+
+Symora works with no AI provider configured, which is the intended way to pilot it
+before paying for a subscription. Leave `OPENAI_API_KEY` and `AI_MODEL_CHEAP` blank and
+it starts in **offline mode**.
+
+Unchanged offline — none of this ever involved AI:
+
+- Sign-in, profile, and the ranked home screen
+- Recurring payments, monthly instances, totals, mark-paid, overdue tracking
+- Tasks, reminders with lead times, birthdays and renewals
+- Personal memory: add, view, edit, delete, with history
+- Reminders in the app, usage tracking, data export, account deletion
+- One-tap WhatsApp and email handoff
+
+Substituted offline:
+
+| Feature | With a key | Without |
+| --- | --- | --- |
+| Understanding what you type or say | Model | Rule-based parser (English + Hinglish) |
+| Message drafting | Model-written | Filled templates |
+| Voice | Server transcription | Browser speech recognition, on-device |
+
+Offline, the app says so on screen, and understanding is narrower — a phrasing far from
+the examples gets an honest "I didn't catch an action in that" rather than a wrong
+guess. Add a key later and the same features get smarter with no migration.
 
 ## V1 scope
 

@@ -12,6 +12,7 @@ import { buildToolDefinitions } from '../tools/registry';
 import { INTENT_NAMES, type IntentName } from '../../types/intents';
 import type { MessageLanguage } from '../../types/conversation';
 import { buildMemoryContext, type MemoryContextEntry } from './memory-context';
+import { renderTemporalContext, type TemporalAnchors } from '../../domain/temporal/temporal-context';
 
 export interface ExtractionResult {
   intent: IntentName | null;
@@ -43,6 +44,12 @@ function systemPrompt(language: MessageLanguage): string {
 
 export interface ExtractIntentOptions {
   /**
+   * Dates computed in code for the user's timezone (domain/temporal/temporal-context.ts).
+   * Without these the model has no reliable idea what "today" is, so "kal", "Saturday"
+   * and "agle 5 din" become guesses — which is how a payment lands on the wrong date.
+   */
+  temporal?: TemporalAnchors;
+  /**
    * Memories already selected as relevant to this turn (domain/memory/relevance.ts).
    * Rendered as fenced reference data, never as instructions — see memory-context.ts.
    * Passing them is what lets the model resolve "mummy" or "the usual time" instead of
@@ -58,12 +65,14 @@ export async function extractIntent(
   options: ExtractIntentOptions = {},
 ): Promise<ExtractionResult> {
   const memoryContext = buildMemoryContext(options.memories ?? []);
+  const temporalContext = options.temporal ? renderTemporalContext(options.temporal) : null;
 
   const result = await aiProvider.complete({
     tier: 'cheap',
     temperature: 0.2,
     messages: [
       { role: 'system', content: systemPrompt(language) },
+      ...(temporalContext ? [{ role: 'system' as const, content: temporalContext }] : []),
       ...(memoryContext ? [{ role: 'system' as const, content: memoryContext }] : []),
       { role: 'user', content: text },
     ],

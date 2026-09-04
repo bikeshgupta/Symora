@@ -1,7 +1,16 @@
 export { detectLanguage } from './language';
 export { extractIntent, type ExtractionResult, type ExtractIntentOptions } from './intent-extraction';
 export { buildMemoryContext, type MemoryContextEntry } from './memory-context';
-export { decide, CONFIDENCE_THRESHOLD, type PipelineDecision } from './confidence-risk';
+export {
+  decide,
+  decideTurn,
+  hasMonetaryArgument,
+  requiresSourceConfirmation,
+  CONFIDENCE_THRESHOLD,
+  type PipelineDecision,
+  type TurnSource,
+  type DecisionInput,
+} from './confidence-risk';
 export {
   composeConversational,
   composeConfirmation,
