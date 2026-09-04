@@ -112,7 +112,7 @@ deliberately, not imported.
 ```
 apps/web/              React PWA (Phase 1 scaffolds Vite/Tailwind/shadcn)
 api/                   one catch-all serverless function (see API groups below)
-  [[...route]].ts      the only function; dispatches via _routes/router.ts
+  index.ts             the only function; dispatches via _routes/router.ts
   _routes/             the actual handlers, one per endpoint
   _middleware/         auth middleware, request context, error contract, logger
 packages/core/src/
@@ -138,7 +138,9 @@ docs/architecture/     architecture notes and ADRs
 **All of them are served by one serverless function.** Vercel makes each file under
 `api/` its own function and the Hobby plan allows twelve; the API groups exceed that, so
 handlers live in `api/_routes/` (a leading underscore keeps Vercel from treating them as
-functions) and `api/[[...route]].ts` dispatches to them through an explicit route table.
+functions) and `api/index.ts` dispatches to them through an explicit route table.
+The `/api/:path*` rewrite in `vercel.json` is what hands it the path — Vercel does not
+parse catch-all filenames outside Next.js, so the function's name must stay unbracketed.
 Adding an endpoint means adding a handler there and a row in `api/_routes/router.ts` —
 never a new file directly under `api/`.
 

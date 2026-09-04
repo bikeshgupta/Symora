@@ -1,5 +1,5 @@
 /**
- * The route table for the single serverless function (see `api/[[...route]].ts`).
+ * The route table for the single serverless function (see `api/index.ts`).
  *
  * Matching is exact-segment with one wildcard form (`:id`), and every route is listed
  * explicitly — there is no dynamic lookup by string, so a request path can only ever
