@@ -59,8 +59,20 @@ export async function verifyBearerToken(
   authorizationHeader: string | undefined,
 ): Promise<DecodedIdToken> {
   const token = extractBearerToken(authorizationHeader);
+
+  // Initialization is deliberately outside the try below. A missing FIREBASE_* value is
+  // a deployment fault, not a bad session, and reporting it as UNAUTHENTICATED would
+  // send the user round a sign-in loop that signing in can never break. The real reason
+  // rides on `cause` for the server log and never reaches the client.
+  let auth: ReturnType<typeof getAuth>;
   try {
-    return await getAuth(getFirebaseAdminApp()).verifyIdToken(token);
+    auth = getAuth(getFirebaseAdminApp());
+  } catch (err) {
+    throw new ApiError('INTERNAL_ERROR', 'Something went wrong. Please try again.', err);
+  }
+
+  try {
+    return await auth.verifyIdToken(token);
   } catch (err) {
     throw new ApiError('UNAUTHENTICATED', 'Invalid or expired session. Please sign in again.', err);
   }

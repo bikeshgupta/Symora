@@ -34,7 +34,7 @@ function payment(id: string, accountName: string, dueDate: string, isOverdue: bo
       status: isOverdue ? 'overdue' : 'pending',
       dueDate,
       isOverdue,
-      outstandingMinorUnits: 4250000n,
+      outstandingMinorUnits: '4250000',
       outstandingFormatted: '42500.00',
     },
   };

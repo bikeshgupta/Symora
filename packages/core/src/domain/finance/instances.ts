@@ -68,8 +68,16 @@ export interface InstanceState {
   status: FinancialInstanceStatus;
   dueDate: string;
   isOverdue: boolean;
-  /** What is still owed: expected minus anything already paid. Never negative. */
-  outstandingMinorUnits: bigint;
+  /**
+   * What is still owed: expected minus anything already paid. Never negative.
+   *
+   * A decimal string of minor units, not a bigint, for the same reason
+   * MonthlyRequirementBreakdown.totalMinorUnits is: this crosses the API boundary, and
+   * JSON.stringify throws on a BigInt — which would turn GET /api/finance and
+   * GET /api/finance/instances into 500s. Arithmetic still happens in BigInt; only the
+   * result is stringified.
+   */
+  outstandingMinorUnits: string;
   outstandingFormatted: string;
 }
 
@@ -104,7 +112,7 @@ export function deriveInstanceState(
     status: isOverdue && instance.status === 'pending' ? 'overdue' : instance.status,
     dueDate,
     isOverdue,
-    outstandingMinorUnits: outstanding,
+    outstandingMinorUnits: outstanding.toString(),
     outstandingFormatted: fromMinorUnits(outstanding),
   };
 }
