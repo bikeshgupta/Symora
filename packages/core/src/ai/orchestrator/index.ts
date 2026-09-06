@@ -4,6 +4,7 @@ export { buildMemoryContext, type MemoryContextEntry } from './memory-context';
 export {
   extractIntentResilient,
   DEGRADED_NO_INTENT_TEXT,
+  QUOTA_EXHAUSTED_NO_INTENT_TEXT,
   type ResilientExtractionResult,
   type ResilientExtractionOptions,
 } from './resilient-extraction';
@@ -20,6 +21,7 @@ export {
 export {
   composeConversational,
   composeConfirmation,
+  composeMissingDetails,
   composeDraft,
   composeToolResult,
   type ComposedResponse,

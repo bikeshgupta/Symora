@@ -3,7 +3,9 @@
 Phase-by-phase build tracker. Source of truth for scope and acceptance criteria:
 `docs/Symora_V1_Requirements_and_Architecture_FULL.md`.
 
-**Overall status: Phases 1-8 complete.** Phase 9 (testing and hardening) is next.
+**Overall status: Phases 1-9 complete**, subject to the live verification listed under
+each phase — the whole suite runs without a Firebase project, a Supabase project or an AI
+key, which is a strength for CI and a limit on what it can prove.
 
 **Symora runs with no AI provider key.** Every deterministic feature works either way;
 the language layer falls back to a rule-based parser, drafts to templates, and voice to
@@ -20,7 +22,7 @@ the browser's own recogniser. See "Offline mode" below.
 | 6 — Personalized home + small dynamic UI | Done | 10h |
 | 7 — Voice + Hindi/Hinglish | Done | 10h |
 | 8 — Notifications + usage + privacy basics | Done | 8h |
-| 9 — Testing / hardening | Not started | 15–25h |
+| 9 — Testing / hardening | Done | 15–25h |
 
 Total target: ~110–120h.
 
@@ -421,43 +423,164 @@ Known limits of offline mode, stated rather than hidden:
 - Paste interpretation categorises and routes to confirmation, but extracts less from
   the pasted text than a model would.
 
-## Phase 9 — Testing / hardening — 15–25h — Not started
+## Phase 9 — Testing / hardening — 15–25h — Done
 
-Test:
+599 tests across 47 files. The whole suite runs with no Firebase project, no Supabase
+project, no AI key and no network — see "What the suite cannot prove" at the end of this
+section for what that costs.
 
-- [ ] Auth
-- [ ] RLS
-- [ ] Cross-user access
-- [ ] Duplicate writes
-- [ ] Timezone
-- [ ] Recurring finance
-- [ ] Speech ambiguity
-- [ ] Hindi / Hinglish
-- [ ] Malformed AI output
-- [ ] Provider timeout / failure
-- [ ] Network failure
-- [ ] Quota exhaustion
-- [ ] Notifications
-- [ ] Data deletion / export
+### The harness
 
+Most of what Phase 9 has to prove — user isolation, idempotency, cascade deletion — is
+only true of real rows and real queries, and mocking the repositories would prove none of
+it: a mock agrees with whatever the caller expects. So the suite substitutes the driver,
+not the code.
+
+- [x] `packages/core/src/testing/fake-supabase.ts` — an in-memory stand-in for the
+      Supabase client implementing the slice of PostgREST the repositories actually use:
+      the filter set, ordering with Postgres' null placement, `single`/`maybeSingle`,
+      `upsert` with `onConflict`, count with `head`, numeric returned as a string, real
+      unique constraints raising 23505, real cascade deletes, and injectable table
+      failures for the connection-lost cases.
+- [x] `packages/core/src/testing/schema.ts` — a hand-written mirror of the migrations,
+      held to them by `migrations.test.ts`. A new constraint or cascade has to be
+      reflected there or the suite goes red; a fake allowed to drift tests nothing.
+- [x] `api/_testing/` — request/response doubles that drive `api/index.ts` the way Vercel
+      does. Only Firebase's network call and the Supabase client are substituted;
+      routing, auth middleware, handlers, services and repositories are the shipping
+      code. `res.json` serializes, so a value JSON cannot represent fails at the boundary
+      instead of passing a test and 500ing in production.
+
+### Test
+
+- [x] Auth — seven malformed-token shapes, each 401 with nobody provisioned; every route
+      in the table guarded; a spoofed `user_id` in body, query or header ignored on read
+      and on write; provisioning idempotent on `firebase_uid`; the failure reason never
+      in the response
+      (`api/_tests/auth.test.ts`, `api/_middleware/firebase-admin.test.ts`)
+- [x] RLS — the migrations are read and audited: RLS enabled in the same migration that
+      creates the table, a policy per command per client role, no permissive predicate,
+      `user_id` cascading from `users`, nothing dropped, versions gap-free
+      (`packages/core/src/testing/migrations.test.ts`)
+- [x] Cross-user access — at two levels, because one is not enough. Through the real API
+      (`api/_tests/cross-user.test.ts`): Alice and Bob both seeded through the endpoints,
+      ten collections showing neither the other's rows nor the other's user id, an item
+      read answering a 404 whose body is byte-identical to a genuinely missing row, and
+      six write paths changing nothing. And at the repository boundary
+      (`packages/core/src/repositories/cross-user.test.ts`), one query at a time — eight
+      single-row reads, thirteen list reads and ten write paths, each called as the wrong
+      user. The second file exists because the first missed something: deleting the
+      `user_id` filter from `getMemoryById` left every API test green, since the *second*
+      query on the same path still filtered and turned the result into a 404. Defence in
+      depth working, and a mutation escaping unnoticed all the same. Both were
+      mutation-checked — removing a `user_id` filter from any read or write now fails.
+- [x] Duplicate writes — double-tapped mark-paid, racing instance generation, repeated
+      inbox reads, restated memories, re-marking a task done
+      (`api/_tests/idempotency.test.ts`,
+      `packages/core/src/domain/finance/finance-integration.test.ts`)
+- [x] Timezone — the suite runs under `America/Los_Angeles` (`vitest.config.ts`) while
+      the fixtures live in `Asia/Kolkata`, so anything leaking the server's zone lands on
+      the wrong calendar day. A payment at 11pm on the 5th in Kolkata belongs to the 5th;
+      the period rolls at the user's midnight; overdue is decided against the user's today
+- [x] Recurring finance — short-month clamping, the `expected_amount` snapshot surviving
+      an EMI change, bounded generation, per-currency totals never mixed, a summary that
+      is byte-identical twice for the same rows and instant
+- [x] Speech ambiguity — a voice-dictated amount always confirms and shows the parsed
+      figure verbatim; a correction typed on the card is what executes, without
+      re-extraction; a tenseless "kal" is asked about rather than guessed
+      (`api/_tests/speech-ambiguity.test.ts`)
+- [x] Hindi / Hinglish — nine more rows in the offline corpus and eight in the
+      orchestrator corpus, every one run against the parser before being written down
+- [x] Malformed AI output — an unregistered tool name, a required field missing, an
+      amount as words, a model-supplied `user_id`, and a tool call with no arguments at
+      all (`api/_tests/ai-failure.test.ts`)
+- [x] Provider timeout / failure — timeout, connection failure, bad key and provider
+      outage each answer 200 with the built-in parser standing in
+- [x] Network failure — the AI provider unreachable, and the database unreachable: the
+      one error contract, no host/port/driver text in the response, no partial answer
+      served as if it were whole (`api/_tests/resilience.test.ts`)
+- [x] Quota exhaustion — both senses. The provider's own 429, and Symora's monthly
+      allowance, which is now enforced rather than merely displayed (see below)
+- [x] Notifications — one row per source per day however often the inbox is read, a
+      dismissal not resurrected, a lead time firing early *and* on the day, daily while
+      overdue, dated by the user's day
+      (`packages/core/src/domain/notifications/notification-integration.test.ts`)
+- [x] Data deletion / export — the export covers every category and none of another
+      user's, omits `firebase_uid`, includes superseded memories, and serializes.
+      Deletion is checked by walking every table in the schema rather than naming a few,
+      with a companion test proving the fixture had rows in each
+      (`packages/core/src/domain/privacy/privacy-service.test.ts`)
 - [x] Maintain an NLP regression corpus of messy real user phrases — started in Phase 7
-      (`ai/orchestrator/nlp-corpus.test.ts`); keep adding a row per real parsing bug
+      (`ai/orchestrator/nlp-corpus.test.ts`, `ai/offline/offline-corpus.test.ts`); keep
+      adding a row per real parsing bug
 
-Follow-ups recorded during earlier phases:
+### What Phase 9 found and fixed
+
+- [x] `InstanceState.outstandingMinorUnits` was a `bigint` and flowed straight into the
+      response body. `JSON.stringify` throws on BigInt, so `GET /api/finance` and
+      `GET /api/finance/instances` would have 500'd on any account with an obligation.
+      Now a decimal string, matching `MonthlyRequirementBreakdown.totalMinorUnits`.
+- [x] A missing `FIREBASE_*` env var was reported as `UNAUTHENTICATED` — telling the user
+      to sign in again for a fault signing in cannot fix. Initialization now sits outside
+      that catch and reports `INTERNAL_ERROR`, with the real reason on `cause`.
+- [x] A tool call whose arguments failed its Zod schema reached `runTool`'s strict parse
+      and became a 500. `validateToolArgs` now rejects it first and the reply names the
+      missing fields. Invalid arguments were always meant to be a rejected tool call
+      rather than a coerced one; now they are also not a crash.
+- [x] The offline parser answered Devanagari input with an English "I didn't catch an
+      action" and English examples. Its patterns are Latin-script, so Hindi in Devanagari
+      cannot match them at all and the user would have rephrased forever against a limit
+      that is ours. It now replies in Hindi, says the built-in parser reads Roman script,
+      and gives examples that work; Hinglish gets a Hinglish reply.
+- [x] First-person framing leaked into user-visible fields — "maine rent de diya 15000"
+      produced an account named "maine rent", which is then what a confirmation card
+      offers to save.
+- [x] `audit_events` did not exist. `auth-security.md` requires an audit row on an
+      authorization failure and that the table be append-only, `finance-rules.md`
+      requires one on a payment correction, and `data-model.md` lists it among the core
+      V1 tables — but no migration had created it, so all three were unenforceable.
+      Migration 0010 adds it with an insert/select-only repository and no update or
+      delete path anywhere, asserted by reading the source. Wired at three points: a
+      denied access, a corrected payment (recording the amount that was overwritten), and
+      a deleted memory. Rows name rows and never quote them, and cascade away with the
+      account so a deletion leaves no trail behind it.
+- [x] `AI_MONTHLY_REQUEST_ALLOWANCE` was computed and displayed but never enforced —
+      Phase 8 left "the caller decides what to do about it" and no caller did. Spending
+      it now does what running with no key does: the rule-based parser takes over, every
+      deterministic feature is untouched, and the reply says the allowance is spent rather
+      than claiming the model was unreachable.
+
+### What the suite cannot prove
+
+Honest limits, not deferred work items. Every one of these needs something this
+environment does not have.
+
+- No live Postgres, so RLS is audited as SQL rather than executed, and the fake enforces
+  the constraints the migrations declare rather than being the same engine.
+- No live Firebase, so real token verification, expiry and revocation are stubbed.
+- No live AI provider, so the model path is exercised against a stub. Every failure mode
+  is covered; no real completion is.
+- No browser, so both themes, Mukta's tabular figures, the PWA install path and voice on
+  iOS Safari remain unverified.
+
+### Follow-ups recorded during earlier phases
 
 - [ ] Memory supersede (close old row + insert new) runs as two statements, not one
       transaction — the Supabase JS client has no multi-statement transaction. The
       partial unique index prevents two current rows; a Postgres function would also
-      make the pair atomic.
-- [ ] Integration test for the memory repository against a real database — the Phase 3
-      unit tests cover the pure decision logic, not the queries.
-- [ ] Cross-user access test for `/api/memories` and `/api/memories/:id`
+      make the pair atomic. The same gap makes obligation creation non-atomic: a failure
+      between the commitment insert and the obligation insert leaves an inert commitment
+      behind, which `api/_tests/resilience.test.ts` documents rather than asserts away.
+- [x] Integration test for the memory repository against a real database — covered
+      against the in-memory database instead; a real-Postgres run is listed above under
+      what the suite cannot prove.
+- [x] Cross-user access test for `/api/memories` and `/api/memories/:id`
 - [ ] The whole API is one serverless function (`api/index.ts`) to stay under
       Vercel's Hobby-plan limit of twelve. On a paid plan the handlers in `api/_routes/`
       could go back to file-based routing; the route table makes either shape cheap.
 - [ ] Web Push delivery for notifications (service worker + VAPID), so reminders reach
       a user who does not open the app
-- [ ] Cross-user access tests for the Phase 4-8 endpoints (`/api/commitments`,
+- [x] Cross-user access tests for the Phase 4-8 endpoints (`/api/commitments`,
       `/api/tasks`, `/api/reminders`, `/api/finance/*`, `/api/drafts`, `/api/home`,
       `/api/voice/transcribe`, `/api/notifications`, `/api/usage`, `/api/privacy/*`)
 - [ ] Account deletion leaves the Firebase auth user in place; decide whether to remove
@@ -469,25 +592,44 @@ Follow-ups recorded during earlier phases:
       Phase 6: `HomePage` owns one instance and passes it to both surfaces.
 - [ ] Instance generation walks obligations one at a time (N+1 reads). Fine at V1
       volumes; worth a single windowed query if an account ever carries many obligations.
+- [ ] Devanagari is not parsed by the offline rule parser — its patterns are Latin-script
+      and `\b` word boundaries do not apply to Devanagari, so supporting it means
+      restructuring every pattern rather than adding alternates. The model path handles
+      Hindi; offline says so honestly (Phase 9 fix above). Doing it badly would produce
+      *wrong* parses, which is worse than none, so it is recorded here rather than
+      half-built.
+- [ ] `DEGRADED_NO_INTENT_TEXT` and the parser's clarifying prompts ("Which payment did
+      you make?") are English-only. The top-level no-intent fallback is now
+      language-aware; these are not yet.
 
 ---
 
 ## V1 Definition of Done
 
-A private-test user can:
+A private-test user can do each of these. Every line is exercised end to end by the
+Phase 9 suite — through the real routes, services and repositories, against the in-memory
+database. None of them is checked off as *lived*, because that needs a Firebase project,
+a Supabase project and a deployed URL that this environment does not have. The
+distinction matters: the code paths are proven, the deployment is not.
 
-- [ ] 1. Log in
-- [ ] 2. Tell Symora a recurring payment
-- [ ] 3. Add a task / reminder naturally
-- [ ] 4. Use English / Hindi / Hinglish
-- [ ] 5. Return later and have Symora remember important context
-- [ ] 6. Ask what is pending
-- [ ] 7. Mark payments / tasks complete
-- [ ] 8. Paste a payment message and let Symora interpret it
-- [ ] 9. Draft a message
-- [ ] 10. Open that draft directly in WhatsApp / email
-- [ ] 11. Receive basic reminders
-- [ ] 12. See what Symora knows about them
-- [ ] 13. Edit / delete memories
-- [ ] 14. Export / delete account data
-- [ ] 15. Never access another user's records
+| # | Can do | Proven by |
+| --- | --- | --- |
+| 1 | Log in | `api/_tests/auth.test.ts` — token verified, user provisioned idempotently |
+| 2 | Tell Symora a recurring payment | `speech-ambiguity.test.ts`, `finance-integration.test.ts` |
+| 3 | Add a task / reminder naturally | `ai-failure.test.ts`, `offline-corpus.test.ts` |
+| 4 | Use English / Hindi / Hinglish | `nlp-corpus.test.ts`, `offline-corpus.test.ts` (Devanagari answered honestly offline; see the follow-up) |
+| 5 | Return later with context remembered | `memory-service.test.ts`, `memory-context.test.ts` |
+| 6 | Ask what is pending | `finance-integration.test.ts`, `home-service.test.ts` |
+| 7 | Mark payments / tasks complete | `idempotency.test.ts`, `finance-integration.test.ts` |
+| 8 | Paste a payment message and have it interpreted | `paste-service.test.ts`, `ai-failure.test.ts` |
+| 9 | Draft a message | `template-drafter.test.ts`, `draft-fallback.test.ts` |
+| 10 | Open that draft in WhatsApp / email | `handoff-adapters.test.ts` |
+| 11 | Receive basic reminders | `notification-integration.test.ts` (in-app inbox; Web Push is still a follow-up) |
+| 12 | See what Symora knows about them | `memory-service.test.ts`, `cross-user.test.ts` |
+| 13 | Edit / delete memories | `cross-user.test.ts`, `audit.test.ts` |
+| 14 | Export / delete account data | `privacy-service.test.ts` — deletion walks every table |
+| 15 | Never access another user's records | `cross-user.test.ts` — ten collections, six write paths |
+
+Remaining before a private test can actually run: create the Vercel project, create the
+Supabase project and apply `supabase/migrations/` (`npm run db:check` reports what is
+behind), create the Firebase project, and check both themes and voice in a real browser.

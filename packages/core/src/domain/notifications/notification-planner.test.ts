@@ -41,7 +41,7 @@ function instance(id: string, dueDate: string, status: 'pending' | 'paid' | 'par
       status,
       dueDate,
       isOverdue: status !== 'paid' && status !== 'skipped' && dueDate < TODAY,
-      outstandingMinorUnits: 4250000n,
+      outstandingMinorUnits: '4250000',
       outstandingFormatted: status === 'partial' ? '22500.00' : '42500.00',
     },
   };

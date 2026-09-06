@@ -20,6 +20,29 @@ export function composeConversational(text: string): ComposedResponse {
   return { text, ui: null };
 }
 
+/**
+ * What to say when the extraction named an action but the arguments did not validate.
+ *
+ * ai-pipeline.md § Confidence and confirmation: "Ask one specific question naming what
+ * is unclear. Never guess a value, never write, never partially write." Naming the
+ * fields is the whole point — "sorry, try again" makes the user re-guess which part
+ * went wrong, and a confirmation card built from half-valid arguments invites them to
+ * skim past a value nobody actually extracted.
+ */
+export function composeMissingDetails(fields: string[]): ComposedResponse {
+  const named = fields.filter((field) => field !== 'the details').map(humanizeKey);
+  if (named.length === 0) {
+    return composeConversational(
+      "I caught what you want to do but not enough of the details to do it safely — could you say it again with the specifics?",
+    );
+  }
+  const list =
+    named.length === 1
+      ? named[0]!.toLowerCase()
+      : `${named.slice(0, -1).map((f) => f.toLowerCase()).join(', ')} and ${named.at(-1)!.toLowerCase()}`;
+  return composeConversational(`I got most of that — what should I use for the ${list}?`);
+}
+
 const CONFIRMATION_QUESTIONS: Partial<Record<IntentName, string>> = {
   create_financial_obligation: 'Add this recurring payment?',
   mark_paid: 'Mark this paid?',

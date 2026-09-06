@@ -16,6 +16,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import * as auditRepository from '../../repositories/audit-repository';
 import * as memoriesRepository from '../../repositories/memories-repository';
 import {
   readMemoryText,
@@ -213,13 +214,30 @@ export async function editMemory(
   return updated ? toView(updated, localDateString(now, timezone)) : null;
 }
 
-/** Hard delete, per the privacy commitment that a user can delete any memory. */
+/**
+ * Hard delete, per the privacy commitment that a user can delete any memory.
+ *
+ * Unlike superseding, this leaves no history: the user asked for the fact to be gone,
+ * and a "deleted" row that still held the value would make a lie of that. What is
+ * recorded instead is an audit event naming the row — never its content
+ * (.claude/rules/auth-security.md § Privacy commitments, and migration 0010's comment on
+ * what an audit row may carry).
+ */
 export async function deleteMemory(
   client: SupabaseClient,
   userId: string,
   id: string,
 ): Promise<boolean> {
-  return memoriesRepository.deleteMemory(client, userId, id);
+  const deleted = await memoriesRepository.deleteMemory(client, userId, id);
+  if (!deleted) return false;
+
+  await auditRepository.recordAuditEvent(client, {
+    userId,
+    action: 'memory_deleted',
+    targetTable: 'memories',
+    targetId: id,
+  });
+  return true;
 }
 
 export interface RelevantMemory extends ScorableMemory {

@@ -67,7 +67,19 @@ to WhatsApp and email.
 
 ## Current status
 
-Phases 1-8 are complete. Phase 9 — testing and hardening — is next.
+Phases 1-9 are complete. What remains before a private test is provisioning, not code:
+a Vercel project, a Supabase project with `supabase/migrations/` applied
+(`npm run db:check` reports what is behind), a Firebase project, and a browser pass over
+both themes and voice.
+
+**The test suite runs with no Firebase, no Supabase, no AI key and no network.** It
+substitutes the driver rather than the code: `packages/core/src/testing/fake-supabase.ts`
+is an in-memory PostgREST stand-in with real unique constraints and real cascade deletes,
+and `api/_testing/` drives `api/index.ts` the way Vercel does. Everything between —
+routing, auth middleware, handlers, domain services, repositories — is what ships. Mock a
+repository and a cross-user test proves nothing; that is why the fake is a row store.
+`packages/core/src/testing/schema.ts` mirrors the migrations and `migrations.test.ts`
+fails if the two drift, so a new table or constraint has to be reflected there.
 
 **Symora runs with no AI provider key.** `getAiMode()` (config/runtime-mode.ts) reads
 configuration only and needs both `OPENAI_API_KEY` and `AI_MODEL_CHEAP` to leave offline
@@ -115,10 +127,15 @@ api/                   one catch-all serverless function (see API groups below)
   index.ts             the only function; dispatches via _routes/router.ts
   _routes/             the actual handlers, one per endpoint
   _middleware/         auth middleware, request context, error contract, logger
+  _testing/            test-only request/response doubles and the two stubs
+  _tests/              API integration tests (auth, cross-user, idempotency, audit,
+                       AI failure modes, speech ambiguity, resilience)
 packages/core/src/
   domain/              deterministic domain services (memory, commitments, finance,
                        tasks, reminders, drafting, home, temporal, notifications,
                        usage, privacy)
+  testing/             test-only: the in-memory Supabase fake, the schema mirror,
+                       fixtures, and the migration reader. Not exported from the index.
   ai/offline/          rule-based parser + template drafter used when no AI key is set
   ai/orchestrator/     language detection, routing, intent extraction, confidence
   ai/tools/            typed tool registry

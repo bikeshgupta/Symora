@@ -5,6 +5,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import * as auditRepository from '../../repositories/audit-repository';
 import * as commitmentsRepository from '../../repositories/commitments-repository';
 import * as financialRepository from '../../repositories/financial-repository';
 import type { FinancialInstanceRecord, FinancialObligationRecord } from '../../types/financial';
@@ -136,6 +137,37 @@ export function decidePaidUpdate(
   return alreadyPaidSame ? { action: 'noop', status, wasCorrection: false } : { action: 'update', status, wasCorrection };
 }
 
+/**
+ * finance-rules.md § Idempotency: "Marking paid with a *different* amount is a
+ * correction, not a duplicate: it updates the instance and records an audit event."
+ *
+ * Amounts only — never a note, a title, or anything the user typed. A correction is the
+ * one payment write that overwrites a value the user already saw and accepted, so what
+ * it was before is worth keeping; what they said about it is not this table's business.
+ */
+async function auditCorrection(
+  client: SupabaseClient,
+  userId: string,
+  before: FinancialInstanceRecord,
+  after: FinancialInstanceRecord,
+): Promise<void> {
+  await auditRepository.recordAuditEvent(client, {
+    userId,
+    action: 'payment_corrected',
+    targetTable: 'financial_instances',
+    targetId: after.id,
+    detail: {
+      period: after.period,
+      previousStatus: before.status,
+      previousPaidAmount: before.paidAmount,
+      previousPaidDate: before.paidDate,
+      status: after.status,
+      paidAmount: after.paidAmount,
+      paidDate: after.paidDate,
+    },
+  });
+}
+
 export async function markPaid(
   client: SupabaseClient,
   userId: string,
@@ -166,6 +198,8 @@ export async function markPaid(
     paidAmount: amount,
     paidDate,
   });
+
+  if (decision.wasCorrection) await auditCorrection(client, userId, instance, updated);
 
   return { status: 'updated', instance: updated, wasCorrection: decision.wasCorrection };
 }
@@ -492,5 +526,8 @@ export async function markInstancePaid(
     paidAmount: amount,
     paidDate,
   });
+
+  if (decision.wasCorrection) await auditCorrection(client, userId, instance, updated);
+
   return { status: 'updated', instance: updated, wasCorrection: decision.wasCorrection };
 }

@@ -62,6 +62,20 @@ export async function extractIntentResilient(
 }
 
 /**
+ * What to say when the month's allowance is spent and the rule parser found nothing.
+ *
+ * Kept separate from DEGRADED_NO_INTENT_TEXT because the reason genuinely differs and
+ * the user can act on this one: nothing is broken, the model was simply not called, and
+ * the allowance resets on a date they can wait for. Saying "I couldn't reach my language
+ * model" here would be false — Symora chose not to reach it.
+ */
+export const QUOTA_EXHAUSTED_NO_INTENT_TEXT =
+  "You've used this month's AI allowance, so I read that with my simpler built-in parser " +
+  "and didn't catch an action. Everything else still works exactly as before — try a more " +
+  'literal phrasing like "Home loan 42500 every month on 5th" or "what\'s pending?". Your ' +
+  'allowance resets at the start of next month.';
+
+/**
  * What to say when the model was unreachable and the rule parser found nothing either.
  * The offline parser's own "I didn't catch an action" text blames the phrasing, which
  * would be a lie here — the user's sentence may have been perfectly clear.

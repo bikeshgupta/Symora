@@ -135,6 +135,51 @@ const CORPUS: Row[] = [
     args: { key: 'mummy', value: 'Sunita' },
   },
   { text: 'how much do I need to pay this month?', intent: 'calculate_monthly_requirement' },
+
+  // -- Phase 9: more of the messy Hinglish people actually type. Every row here was
+  //    run against the parser first; none of them is aspirational. --
+  {
+    text: 'maine rent de diya 15000',
+    intent: 'mark_paid',
+    args: { accountName: 'rent', amount: 15000 },
+    note: 'reported from use: the first-person "maine" was ending up in the account name',
+  },
+  {
+    text: 'bijli ka bill kal bhar diya',
+    intent: 'mark_paid',
+    args: { accountName: 'bijli ka bill', paidDate: '2026-09-04' },
+    note: 'past tense settles "kal" backwards without asking',
+  },
+  {
+    text: 'gas cylinder book karna hai parso',
+    intent: 'create_task',
+    args: { title: 'gas cylinder book', dueDate: '2026-09-07' },
+    note: '"parso" is two days out, and "karna hai" is framing rather than title',
+  },
+  {
+    text: 'car service ka reminder 2 din pehle',
+    intent: 'create_reminder',
+    args: { leadDays: 2 },
+    note: '"2 din pehle" is a lead time, not a due date',
+  },
+  { text: 'kitna pending hai', intent: 'list_pending', args: { type: 'ALL' } },
+  { text: 'इस महीने क्या क्या pending hai?', intent: 'list_pending', args: { type: 'ALL' } },
+  {
+    text: 'paisa kitna dena hai is mahine',
+    intent: 'calculate_monthly_requirement',
+    note: 'asks for a total without using the word "total" or "how much to pay"',
+  },
+  {
+    text: 'phone recharge 299 every month on 22',
+    intent: 'create_financial_obligation',
+    args: { accountName: 'Phone', obligationType: 'bill', amount: 299, dueDay: 22 },
+  },
+  {
+    text: 'Netflix band kar dena hai',
+    intent: 'create_task',
+    args: { title: 'Netflix band kar dena' },
+    note: 'a subscription keyword must not turn cancelling it into a recurring payment',
+  },
 ];
 
 describe('offline rule parser — acceptance corpus', () => {
@@ -161,5 +206,52 @@ describe('offline rule parser — acceptance corpus', () => {
 
   it('reports zero token usage, since nothing was billed', () => {
     expect(parse('Home loan 42500 every month on 5th.').usage.totalTokens).toBe(0);
+  });
+});
+
+/**
+ * Devanagari is a known limit of this parser, not a bug to be found later.
+ *
+ * The patterns are Latin-script, so Hindi typed in Devanagari cannot match any of them.
+ * That is a Phase 7 gap recorded in PROGRESS.md, and the model path handles it. What
+ * matters offline is that the limit is stated honestly instead of being reported back to
+ * the user as their phrasing being unclear — they would rewrite the sentence forever.
+ */
+describe('offline rule parser — Devanagari input', () => {
+  const DEVANAGARI_PHRASES = [
+    'होम लोन 42500 हर महीने 5 तारीख को',
+    'मम्मी को कल फोन करना है',
+    'बिजली का बिल 2400 हर महीने 18 तारीख को',
+  ];
+
+  it.each(DEVANAGARI_PHRASES)('never guesses an intent from %s', (text) => {
+    const result = parse(text);
+    // The one outcome that would be worse than not understanding: understanding wrongly.
+    expect(result.intent).toBeNull();
+  });
+
+  it.each(DEVANAGARI_PHRASES)('answers %s in Hindi, not in English', (text) => {
+    const result = parse(text);
+    expect(result.text).toMatch(/[\u0900-\u097F]/);
+    expect(result.text).not.toMatch(/I didn't catch an action/);
+  });
+
+  it('says the limit is the parser’s script, not the user’s phrasing', () => {
+    const result = parse('होम लोन 42500 हर महीने 5 तारीख को');
+    expect(result.text).toContain('रोमन');
+    // And points at a phrasing that actually works.
+    expect(result.text).toContain('har mahine');
+  });
+
+  it('answers Hinglish in Hinglish rather than English', () => {
+    const result = parse('kuch samajh nahi aaya mujhe');
+    expect(result.intent).toBeNull();
+    expect(result.text).toContain('har mahine');
+    expect(result.text).not.toMatch(/I didn't catch an action/);
+  });
+
+  it('still answers plain English in English', () => {
+    const result = parse('what do you think about the weather lately');
+    expect(result.text).toMatch(/I didn't catch an action/);
   });
 });

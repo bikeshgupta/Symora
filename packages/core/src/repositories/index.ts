@@ -10,3 +10,5 @@ export * as memoriesRepository from './memories-repository';
 export * as conversationsRepository from './conversations-repository';
 export * as aiUsageRepository from './ai-usage-repository';
 export * as notificationsRepository from './notifications-repository';
+export * as auditRepository from './audit-repository';
+export type { AuditAction, AuditEventRecord } from './audit-repository';
