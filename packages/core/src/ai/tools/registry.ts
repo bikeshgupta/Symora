@@ -376,6 +376,33 @@ export function getArgsSchema(intent: IntentName): z.ZodTypeAny {
   return registry[intent].argsSchema;
 }
 
+export type ToolArgsValidation =
+  | { ok: true; args: unknown }
+  /** The field paths the arguments got wrong, so the reply can name them. */
+  | { ok: false; fields: string[] };
+
+/**
+ * Validates a proposed tool call's arguments without running it.
+ *
+ * ai-pipeline.md: "Invalid arguments are a rejected tool call, not a coerced one." A
+ * rejection is an expected state, not an exception — the model can return a confident
+ * tool call with a required field missing or an amount as words, and the user whose
+ * perfectly clear sentence produced it should get a question about the missing detail,
+ * not a 500. `runTool` below still parses strictly; this exists so a caller can find
+ * out *before* deciding to proceed, confirm, or ask.
+ */
+export function validateToolArgs(intent: IntentName, args: unknown): ToolArgsValidation {
+  const parsed = registry[intent].argsSchema.safeParse(args);
+  if (parsed.success) return { ok: true, args: parsed.data };
+
+  const fields = [
+    ...new Set(
+      parsed.error.issues.map((issue) => (issue.path.length > 0 ? issue.path.join('.') : 'the details')),
+    ),
+  ];
+  return { ok: false, fields };
+}
+
 export async function runTool(ctx: ToolContext, intent: IntentName, args: unknown): Promise<ToolResult> {
   const entry = registry[intent];
   const parsed = entry.argsSchema.parse(args);

@@ -12,6 +12,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { AICompletionResult, AIProvider } from '@symora/core';
 
 const TEST_TOKEN_PREFIX = 'test:';
 
@@ -64,6 +65,49 @@ export const firebaseAuthModule = {
   }),
 };
 
+// ---------------------------------------------------------------------------
+// AI provider
+// ---------------------------------------------------------------------------
+
+/**
+ * The provider stub used by the failure-mode tests. It makes no network call — it
+ * either returns a completion the test dictated or throws the error the test wants to
+ * see handled, which is the only way to exercise a timeout, an exhausted quota or
+ * malformed output without a live key.
+ */
+let providerBehaviour: AIProvider['complete'] | null = null;
+
+export function useAiProvider(complete: AIProvider['complete']): void {
+  providerBehaviour = complete;
+}
+
+export function clearAiProvider(): void {
+  providerBehaviour = null;
+}
+
+const stubProvider: AIProvider = {
+  name: 'openai',
+  async complete(request) {
+    if (!providerBehaviour) {
+      throw new Error('No AI provider behaviour is installed. Call useAiProvider() first.');
+    }
+    return providerBehaviour(request);
+  },
+};
+
+/** A well-formed completion, so a test only has to state the part it cares about. */
+export function completion(overrides: Partial<AICompletionResult> = {}): AICompletionResult {
+  return {
+    text: null,
+    toolCalls: [],
+    structured: null,
+    usage: { promptTokens: 120, completionTokens: 30, totalTokens: 150 },
+    model: 'test-cheap-model',
+    finishReason: 'stop',
+    ...overrides,
+  };
+}
+
 export function coreModule(actual: Record<string, unknown>): Record<string, unknown> {
-  return { ...actual, getSupabaseServiceClient: requireClient };
+  return { ...actual, getSupabaseServiceClient: requireClient, openAiProvider: stubProvider };
 }

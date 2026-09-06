@@ -124,6 +124,13 @@ export const SCHEMA: Record<string, TableSchema> = {
     appendOnly: true,
   },
 
+  audit_events: {
+    generated: ['id', 'created_at'],
+    defaults: { target_table: null, target_id: null, detail: null, request_id: null },
+    cascadeOnUserDelete: true,
+    appendOnly: true,
+  },
+
   notifications: {
     generated: ['id', 'created_at', 'updated_at'],
     defaults: {

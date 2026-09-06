@@ -20,6 +20,7 @@ export {
 export {
   composeConversational,
   composeConfirmation,
+  composeMissingDetails,
   composeDraft,
   composeToolResult,
   type ComposedResponse,

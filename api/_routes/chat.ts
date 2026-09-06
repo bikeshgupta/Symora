@@ -10,6 +10,7 @@ import {
   buildTemporalAnchors,
   composeConfirmation,
   composeConversational,
+  composeMissingDetails,
   composeToolResult,
   conversationsRepository,
   detectLanguage,
@@ -28,6 +29,7 @@ import {
   openAiProvider,
   truncateForExtraction,
   runTool,
+  validateToolArgs,
   type ChatResponseBody,
   type TurnSource,
   type IntentName,
@@ -247,6 +249,23 @@ export default withApiHandler(async (req, res, ctx) => {
             : (nested.text ?? "I looked at that text but couldn't identify an action to take."),
         );
     await respond(composed.text, composed.ui, nested.intent ?? 'interpret_pasted_message');
+    return;
+  }
+
+  // Model output is untrusted input (.claude/rules/ai-pipeline.md § Output safety), so
+  // the arguments are validated before anything decides what to do with them. A tool
+  // call whose arguments fail its schema is a rejected tool call — asked about, never
+  // coerced, never half-written, and never a 500 for a sentence the user may have got
+  // perfectly right.
+  const validation = validateToolArgs(extraction.intent, extraction.args ?? {});
+  if (!validation.ok) {
+    ctx.logger.warn('Rejected a tool call with invalid arguments.', {
+      intent: extraction.intent,
+      fields: validation.fields.join(','),
+      degraded: extraction.degraded,
+    });
+    const composed = composeMissingDetails(validation.fields);
+    await respond(composed.text, composed.ui, null);
     return;
   }
 

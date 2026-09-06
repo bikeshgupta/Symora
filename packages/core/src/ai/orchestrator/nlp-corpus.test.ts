@@ -73,6 +73,55 @@ const CORPUS: CorpusEntry[] = [
     needsDateClarification: true,
     note: 'parso is two days either side',
   },
+
+  // Phase 9 additions — messier real phrasings, mixed script and mixed tense.
+  {
+    text: 'maine rent de diya 15000',
+    language: 'hinglish',
+    needsDateClarification: false,
+    note: 'no relative date at all, so nothing to settle',
+  },
+  {
+    text: 'bijli ka bill kal bhar diya',
+    language: 'hinglish',
+    needsDateClarification: false,
+    note: '"bhar diya" settles kal backwards',
+  },
+  {
+    text: 'kal bijli ka bill',
+    language: 'hinglish',
+    needsDateClarification: true,
+    note: 'the same words without a verb: nothing settles the direction',
+  },
+  {
+    text: 'gas cylinder book karna hai parso',
+    language: 'hinglish',
+    needsDateClarification: false,
+    note: '"karna hai" settles parso forwards',
+  },
+  {
+    text: 'इस महीने क्या क्या pending hai?',
+    language: 'hi',
+    needsDateClarification: false,
+    note: 'Devanagari plus Latin in one sentence still reads as Hindi',
+  },
+  {
+    text: 'agle hafte school fees 12000 deni hai',
+    language: 'hinglish',
+    needsDateClarification: false,
+  },
+  {
+    text: 'Netflix band kar dena hai',
+    language: 'hinglish',
+    needsDateClarification: false,
+    note: 'a brand name in Latin script must not make the sentence read as English',
+  },
+  {
+    text: 'Please transfer the deposit before Monday',
+    language: 'en',
+    needsDateClarification: false,
+    note: 'plain English with no Hinglish markers',
+  },
 ];
 
 describe('NLP corpus — language detection', () => {

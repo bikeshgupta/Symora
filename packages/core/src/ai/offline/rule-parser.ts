@@ -12,8 +12,10 @@
  * Guessing is the one thing it must not do.
  *
  * Coverage is the phrasings people actually type for the twelve V1 intents, in English
- * and Hinglish. Anything it does not recognise falls through to a conversational reply
- * that tells the user what it can do — never to a wrong write.
+ * and Hinglish — Latin script only. Hindi written in Devanagari is understood by the
+ * model path, not by these patterns; offline it gets an honest answer saying so rather
+ * than a guess (see noIntentText). Anything not recognised falls through to a
+ * conversational reply that tells the user what it can do — never to a wrong write.
  */
 
 import type { ExtractionResult } from '../orchestrator/intent-extraction';
@@ -69,7 +71,10 @@ function cleanTitle(text: string, removals: (string | undefined)[]): string {
       // "karna hai" and "remind me" sit before their own first words on purpose:
       // alternation takes the first branch that matches, and stripping "remind" alone
       // would strand the "me" in the title.
-      /\b(remind me|remind|please|kindly|yaad dila dena|yaad dilana|yaad rakhna|karna hai|karna|mujhe|ko|par|on|at|every|har|hai|hain)\b/gi,
+      // The first-person framing at the front of a sentence — "maine rent de diya" — is
+      // not part of what was paid; without it the account name came out as "maine rent",
+      // which is then what the user sees on a confirmation card and saves.
+      /\b(remind me|remind|please|kindly|yaad dila dena|yaad dilana|yaad rakhna|karna hai|karna|mujhe|maine|mainne|humne|hamne|mera|meri|mere|apna|apni|ko|par|on|at|every|har|hai|hain)\b/gi,
       ' ',
     )
     .replace(/[.,!?]+/g, ' ')
@@ -202,9 +207,47 @@ function recipientFrom(text: string): string | undefined {
   return relationship || undefined;
 }
 
+/** Any Devanagari codepoint. Used to tell script apart from language. */
+const DEVANAGARI = /[\u0900-\u097F]/;
+
+/**
+ * What to say when nothing matched — in the language the user wrote in
+ * (.claude/rules/ai-pipeline.md § Language: "Reply in the language the user used").
+ *
+ * The Devanagari branch is not a translation of the other two, because the situation is
+ * genuinely different. This parser's patterns are Latin-script, so Hindi written in
+ * Devanagari does not fail to match for want of a clearer phrasing — it cannot match at
+ * all. Answering it with "I didn't catch an action, try rephrasing" blames the user for
+ * a limit that is ours, and they would rephrase forever. So that branch says what is
+ * actually true and gives examples in a script the parser can read. Devanagari
+ * understanding belongs to the model path; the honest offline answer is this one.
+ */
+function noIntentText(language: MessageLanguage, raw: string): string {
+  if (DEVANAGARI.test(raw)) {
+    return (
+      'अभी कोई AI मॉडल कॉन्फ़िगर नहीं है, और बिल्ट-इन पार्सर फ़िलहाल सिर्फ़ रोमन लिपि पढ़ पाता है। ' +
+      'कृपया रोमन में लिखकर देखें — जैसे "Home loan 42500 har mahine 5 tarikh ko", ' +
+      '"kal doctor appointment hai", या "kya kya pending hai?". ' +
+      'आपका बाकी सारा डेटा और सभी सुविधाएँ पहले की तरह काम कर रही हैं।'
+    );
+  }
+
+  if (language === 'hinglish' || language === 'hi') {
+    return (
+      'Us line mein mujhe koi action nahi mila. Aise likh kar dekhiye — ' +
+      '"Home loan 42500 har mahine 5 tarikh ko", "kal doctor ko call karna hai", ya "kya kya pending hai?".'
+    );
+  }
+
+  return (
+    "I didn't catch an action in that. Try something like \"Home loan 42500 every month on 5th\", " +
+    '"remind me to call the electrician on Saturday", or "what\'s pending?".'
+  );
+}
+
 export function extractIntentOffline(
   text: string,
-  _language: MessageLanguage,
+  language: MessageLanguage,
   options: OfflineExtractionOptions,
 ): ExtractionResult {
   const raw = text.trim();
@@ -368,8 +411,5 @@ export function extractIntentOffline(
     if (title) return result('create_task', { title }, CONFIDENCE_LIKELY);
   }
 
-  return conversational(
-    "I didn't catch an action in that. Try something like \"Home loan 42500 every month on 5th\", " +
-      '"remind me to call the electrician on Saturday", or "what\'s pending?".',
-  );
+  return conversational(noIntentText(language, raw));
 }

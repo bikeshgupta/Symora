@@ -48,8 +48,10 @@ export interface SeedUserOptions {
 export function seedUser(db: FakeDatabase, options: SeedUserOptions): TestUser {
   const row = db.applyDefaults('users', {
     firebase_uid: options.firebaseUid,
-    email: options.email ?? `${options.firebaseUid}@example.com`,
-    display_name: options.displayName ?? options.firebaseUid,
+    // Deliberately not derived from the uid: a test asserting that an export carries no
+    // firebase uid would otherwise pass or fail on the email address alone.
+    email: options.email ?? `${options.firebaseUid.replace(/^firebase-/, '')}@example.com`,
+    display_name: options.displayName ?? options.firebaseUid.replace(/^firebase-/, ''),
     ...(options.timezone ? { timezone: options.timezone } : {}),
     ...(options.preferredLanguage ? { preferred_language: options.preferredLanguage } : {}),
   });
