@@ -133,8 +133,20 @@ instance, type, scheduled time, delivery state, and timestamps.
 
 ## audit_events
 
-Append-only record of security- and privacy-relevant actions: `id`, `user_id`, action,
-target table and row, and `created_at`. Never updated or deleted by application code.
+Append-only record of security- and privacy-relevant actions: `id`, `user_id`, `action`,
+`target_table`, `target_id`, `detail` (jsonb), `request_id`, and `created_at`. Never
+updated or deleted by application code — the repository exposes only insert and select,
+and there is no update or delete query for this table anywhere.
+
+`action` is a small enum, enforced by a check constraint: `access_denied`,
+`payment_corrected`, `memory_deleted`. Account deletion is deliberately absent — the
+table cascades from `users`, so a row recording the deletion would be deleted by it.
+
+`detail` carries structured context only: an amount that changed, a status, a method and
+path. **Never memory, message or draft content.** This table sits outside the request
+log's redaction, so a row that quietly accumulated user content would become a second
+copy of everything Symora holds — one that the export does not include and that nobody
+audits.
 
 ## Rules for changing the model
 

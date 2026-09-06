@@ -23,7 +23,9 @@ import {
   extractIntentOffline,
   extractIntentResilient,
   DEGRADED_NO_INTENT_TEXT,
+  QUOTA_EXHAUSTED_NO_INTENT_TEXT,
   getAiMode,
+  usageService,
   memoryService,
   needsRelativeDateClarification,
   openAiProvider,
@@ -92,11 +94,34 @@ export default withApiHandler(async (req, res, ctx) => {
   const language = detectLanguage(body.text);
   const now = new Date();
   const source: TurnSource = body.source;
-  // With no provider key configured the rule-based parser stands in for the model. Every
-  // gate, tool and domain service below is identical either way — only the extractor
-  // differs, which is what makes adding a key later a configuration change and not a
-  // rewrite (packages/core/src/config/runtime-mode.ts).
-  const aiMode = getAiMode();
+  // What the deployment is configured for. With no provider key the rule-based parser
+  // stands in for the model. Every gate, tool and domain service below is identical
+  // either way — only the extractor differs, which is what makes adding a key later a
+  // configuration change and not a rewrite (packages/core/src/config/runtime-mode.ts).
+  const configuredMode = getAiMode();
+
+  // The month's allowance, enforced rather than merely reported.
+  //
+  // Phase 8 computed `exhausted` and left "the caller decides what to do about it" — and
+  // no caller did, so AI_MONTHLY_REQUEST_ALLOWANCE showed a remaining count on the usage
+  // screen and then changed nothing. Spending it now does what running with no key does:
+  // the rule-based parser takes over and every deterministic feature is untouched. The
+  // turn is answered either way; it is only understood less well, and the reply says so
+  // rather than failing silently (.claude/rules/ai-pipeline.md § Provider and model use).
+  const quota =
+    configuredMode === 'ai'
+      ? await usageService.getUsage(client, ctx.user.id, now, ctx.user.timezone, configuredMode)
+      : null;
+  const quotaExhausted = quota?.exhausted ?? false;
+  if (quota?.exhausted) {
+    ctx.logger.warn('AI allowance spent for the period; using the rule-based parser.', {
+      period: quota.period,
+      requests: quota.totals.requests,
+      allowance: quota.allowance ?? undefined,
+    });
+  }
+  const aiMode = quotaExhausted ? 'offline' : configuredMode;
+
   // Dates the model is allowed to use, computed here rather than by the model.
   const temporal = buildTemporalAnchors(now, ctx.user.timezone);
   const toolCtx = {
@@ -190,9 +215,11 @@ export default withApiHandler(async (req, res, ctx) => {
 
   if (!extraction.intent) {
     const composed = composeConversational(
-      extraction.degraded
-        ? DEGRADED_NO_INTENT_TEXT
-        : (extraction.text ?? "I'm not sure I understood that."),
+      quotaExhausted
+        ? QUOTA_EXHAUSTED_NO_INTENT_TEXT
+        : extraction.degraded
+          ? DEGRADED_NO_INTENT_TEXT
+          : (extraction.text ?? "I'm not sure I understood that."),
     );
     await respond(composed.text, composed.ui, null);
     return;
@@ -244,9 +271,11 @@ export default withApiHandler(async (req, res, ctx) => {
     const composed = nested.intent
       ? composeConfirmation(nested.intent, nested.args ?? {}, pasteCategory)
       : composeConversational(
-          nested.degraded
-            ? DEGRADED_NO_INTENT_TEXT
-            : (nested.text ?? "I looked at that text but couldn't identify an action to take."),
+          quotaExhausted
+            ? QUOTA_EXHAUSTED_NO_INTENT_TEXT
+            : nested.degraded
+              ? DEGRADED_NO_INTENT_TEXT
+              : (nested.text ?? "I looked at that text but couldn't identify an action to take."),
         );
     await respond(composed.text, composed.ui, nested.intent ?? 'interpret_pasted_message');
     return;

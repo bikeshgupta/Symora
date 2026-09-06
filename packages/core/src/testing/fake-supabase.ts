@@ -144,6 +144,8 @@ function parseOrBranch(expression: string): Filter {
 
 export class FakeDatabase {
   private readonly tables = new Map<string, Row[]>();
+  /** Tables made to fail, so a dropped connection can be provoked deliberately. */
+  private readonly failures = new Map<string, string>();
   /**
    * A monotonic clock for created_at/updated_at. Real timestamps collide inside a
    * millisecond, which makes any ordered assertion flaky; this makes insertion order
@@ -166,6 +168,24 @@ export class FakeDatabase {
     const schema = SCHEMA[table];
     if (!schema) throw new Error(`Unknown table '${table}'. Add it to testing/schema.ts.`);
     return schema;
+  }
+
+  /**
+   * Makes every query against a table fail the way a dropped connection does.
+   *
+   * The failure modes worth testing are the ones nobody sees in development, and "the
+   * database went away mid-request" is the first of them. Injected here rather than by
+   * monkey-patching a row array so it reaches reads and writes alike, and so the error
+   * arrives through the same `{ data, error }` channel a real driver failure would.
+   */
+  failTable(table: string, message = 'connect ECONNREFUSED 10.0.0.5:5432 (db.example.supabase.co)'): void {
+    this.schemaFor(table);
+    this.failures.set(table, message);
+  }
+
+  failureFor(table: string): PostgrestErrorLike | null {
+    const message = this.failures.get(table);
+    return message ? { code: '08006', message, details: '', hint: '' } : null;
   }
 
   /** Direct row access, for seeding a fixture and for asserting on what a write left behind. */
@@ -479,6 +499,9 @@ class FakeQuery<T> implements PromiseLike<Result<T>> {
 
   private run(): Result<T> {
     const table = this.table;
+    const injected = this.db.failureFor(table);
+    if (injected) return this.fail(injected);
+
     const all = this.db.rows(table);
     const schema = this.db.schemaFor(table);
 
