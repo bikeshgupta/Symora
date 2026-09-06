@@ -425,7 +425,7 @@ Known limits of offline mode, stated rather than hidden:
 
 ## Phase 9 — Testing / hardening — 15–25h — Done
 
-564 tests across 46 files. The whole suite runs with no Firebase project, no Supabase
+599 tests across 47 files. The whole suite runs with no Firebase project, no Supabase
 project, no AI key and no network — see "What the suite cannot prove" at the end of this
 section for what that costs.
 
@@ -462,10 +462,18 @@ not the code.
       creates the table, a policy per command per client role, no permissive predicate,
       `user_id` cascading from `users`, nothing dropped, versions gap-free
       (`packages/core/src/testing/migrations.test.ts`)
-- [x] Cross-user access — Alice and Bob both seeded through the real API; ten collections
-      show neither the other's rows nor the other's user id, an item read is a 404 whose
-      body is byte-identical to a genuinely missing row, and six write paths change
-      nothing (`api/_tests/cross-user.test.ts`)
+- [x] Cross-user access — at two levels, because one is not enough. Through the real API
+      (`api/_tests/cross-user.test.ts`): Alice and Bob both seeded through the endpoints,
+      ten collections showing neither the other's rows nor the other's user id, an item
+      read answering a 404 whose body is byte-identical to a genuinely missing row, and
+      six write paths changing nothing. And at the repository boundary
+      (`packages/core/src/repositories/cross-user.test.ts`), one query at a time — eight
+      single-row reads, thirteen list reads and ten write paths, each called as the wrong
+      user. The second file exists because the first missed something: deleting the
+      `user_id` filter from `getMemoryById` left every API test green, since the *second*
+      query on the same path still filtered and turned the result into a 404. Defence in
+      depth working, and a mutation escaping unnoticed all the same. Both were
+      mutation-checked — removing a `user_id` filter from any read or write now fails.
 - [x] Duplicate writes — double-tapped mark-paid, racing instance generation, repeated
       inbox reads, restated memories, re-marking a task done
       (`api/_tests/idempotency.test.ts`,
