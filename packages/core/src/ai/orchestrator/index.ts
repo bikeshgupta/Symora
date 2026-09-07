@@ -34,3 +34,9 @@ export {
   type CapabilitySuggestion,
 } from './small-talk';
 export { startTurnBudget, MIN_MODEL_CALL_MS, type TurnBudget } from './turn-budget';
+export {
+  decideEscalation,
+  CLEAR_RULE_MATCH,
+  type EscalationDecision,
+  type EscalationReason,
+} from './escalation';

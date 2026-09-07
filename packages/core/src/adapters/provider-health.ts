@@ -20,7 +20,7 @@
  * a worse trade at V1 volumes.
  */
 
-export type ProviderState = 'ready' | 'unreachable';
+export type ProviderState = 'ready' | 'unreachable' | 'rate_limited';
 
 export interface ProviderHealthSnapshot {
   state: ProviderState;
@@ -30,6 +30,26 @@ export interface ProviderHealthSnapshot {
   retryAt: Date | null;
   /** Why it last failed, for the log. Never shown to a user. */
   lastError: string | null;
+}
+
+/**
+ * A refusal for spending too fast, as opposed to an endpoint that is not there.
+ *
+ * On a free tier this is the normal state at the end of a busy day, and it resolves by
+ * itself — which makes it a different sentence in front of a user than "your model is
+ * not answering", and a very different one from "not configured". The back-off is
+ * identical; only the wording changes.
+ */
+export function isRateLimitFailure(error: unknown): boolean {
+  for (let current: unknown = error, depth = 0; current && depth < 5; depth += 1) {
+    if ((current as { status?: unknown }).status === 429) return true;
+    const name = (current as { name?: unknown }).name;
+    if (typeof name === 'string' && /ratelimit/i.test(name)) return true;
+    const message = current instanceof Error ? current.message : '';
+    if (/rate limit|quota|too many requests|resource_exhausted/i.test(message)) return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 /**
@@ -114,6 +134,7 @@ export class ProviderHealth {
   private consecutiveFailures = 0;
   private openedUntil = 0;
   private lastError: string | null = null;
+  private lastFailureWasRateLimit = false;
 
   private readonly cooldownMs: number;
   private readonly threshold: number;
@@ -143,6 +164,7 @@ export class ProviderHealth {
     this.consecutiveFailures = 0;
     this.openedUntil = 0;
     this.lastError = null;
+    this.lastFailureWasRateLimit = false;
   }
 
   /**
@@ -155,6 +177,7 @@ export class ProviderHealth {
 
     this.consecutiveFailures += 1;
     this.lastError = error instanceof Error ? error.message : String(error);
+    this.lastFailureWasRateLimit = isRateLimitFailure(error);
     if (this.consecutiveFailures >= this.threshold) {
       this.openedUntil = this.now() + this.cooldownMs;
     }
@@ -163,7 +186,7 @@ export class ProviderHealth {
   snapshot(): ProviderHealthSnapshot {
     const isOpen = this.openedUntil > 0 && this.now() < this.openedUntil;
     return {
-      state: isOpen ? 'unreachable' : 'ready',
+      state: isOpen ? (this.lastFailureWasRateLimit ? 'rate_limited' : 'unreachable') : 'ready',
       consecutiveFailures: this.consecutiveFailures,
       retryAt: isOpen ? new Date(this.openedUntil) : null,
       lastError: this.lastError,
@@ -175,5 +198,6 @@ export class ProviderHealth {
     this.consecutiveFailures = 0;
     this.openedUntil = 0;
     this.lastError = null;
+    this.lastFailureWasRateLimit = false;
   }
 }

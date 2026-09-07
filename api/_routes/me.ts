@@ -34,10 +34,16 @@ export default withApiHandler(async (req, res, ctx) => {
   // endpoint answered recently (adapters/provider-health.ts), and firing a request at a
   // machine that is off just to render a badge would make every page load pay the
   // timeout this whole mechanism exists to avoid.
-  const modelReachable = getProviderHealth().state === 'ready';
+  const health = getProviderHealth();
 
   const body: ApiSuccessBody<MeResponseBody> = {
-    data: { ...ctx.user, capabilities: getRuntimeCapabilities(process.env, { modelReachable }) },
+    data: {
+      ...ctx.user,
+      capabilities: getRuntimeCapabilities(process.env, {
+        modelReachable: health.state === 'ready',
+        modelRateLimited: health.state === 'rate_limited',
+      }),
+    },
   };
   res.status(200).json(body);
 });

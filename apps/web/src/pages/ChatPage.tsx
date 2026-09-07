@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { CloudOff, WifiOff } from 'lucide-react';
+import { CloudOff, Gauge, WifiOff } from 'lucide-react';
 import { ConfirmationCard, MessageDraftCard, SuggestionChip } from '@/components/trusted';
 import { ChatEmptyState } from '@/components/chat/ChatEmptyState';
 import { Composer } from '@/components/chat/Composer';
@@ -121,7 +121,9 @@ export function ChatPage({
         </div>
       </div>
 
-      {modelStatus && modelStatus !== 'ready' && <ModelStatusStrip status={modelStatus} />}
+      {modelStatus && modelStatus !== 'ready' && (
+        <ModelStatusStrip status={modelStatus} provider={me?.capabilities.modelProvider ?? 'The AI provider'} />
+      )}
 
       <Composer
         key={prefill?.nonce ?? 'composer'}
@@ -161,21 +163,33 @@ function ChatError({ error }: { error: unknown }) {
 }
 
 /**
- * Says which of the three states the model layer is in, in the one place it changes what
- * the user should expect (CLAUDE.md: `offline`, `unreachable` and `ready` must not share
- * a word). "Unreachable" in particular is a machine the user can switch back on, and
- * saying "not configured" there would send them to fix the wrong thing.
+ * Says which state the model layer is in, in the one place it changes what the user
+ * should expect. The three non-ready states must not share a word (CLAUDE.md): a machine
+ * to switch on, a quota that refills, and a deployment nobody configured are three
+ * different next actions, and telling someone to check their configuration when they
+ * have simply used today's free requests wastes an afternoon.
  */
-function ModelStatusStrip({ status }: { status: 'offline' | 'unreachable' }) {
-  const Icon = status === 'unreachable' ? WifiOff : CloudOff;
+function ModelStatusStrip({
+  status,
+  provider,
+}: {
+  status: 'offline' | 'unreachable' | 'rate_limited';
+  provider: string;
+}) {
+  const Icon = status === 'offline' ? CloudOff : status === 'rate_limited' ? Gauge : WifiOff;
+
+  const message =
+    status === 'rate_limited'
+      ? `${provider} is rate limiting Symora for the moment — it is reading your messages with its built-in parser until the quota frees up.`
+      : status === 'unreachable'
+        ? `${provider} is not answering — Symora is using its built-in parser meanwhile. Everything deterministic still works.`
+        : 'No AI model configured — Symora is using its built-in parser. Keep requests close to the examples.';
 
   return (
     <div className="border-t border-border bg-surface-raised px-4 py-2 sm:px-6">
       <p className="mx-auto flex max-w-3xl items-center gap-2 text-caption text-text-muted">
         <Icon size={14} className="shrink-0" aria-hidden="true" />
-        {status === 'unreachable'
-          ? 'Your AI model is not answering — Symora is using its built-in parser meanwhile. Everything deterministic still works.'
-          : 'No AI model configured — Symora is using its built-in parser. Keep requests close to the examples.'}
+        {message}
       </p>
     </div>
   );

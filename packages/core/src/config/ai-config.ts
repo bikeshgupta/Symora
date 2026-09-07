@@ -42,6 +42,78 @@ export function getAiApiKeyForClient(env: NodeJS.ProcessEnv = process.env): stri
   return getAiApiKey(env) ?? 'no-auth';
 }
 
+/**
+ * Endpoints that are somebody else's hosted API rather than a machine the user runs.
+ *
+ * `AI_BASE_URL` was originally only ever set for a self-hosted model, so its presence
+ * was a fair proxy for "this is your own machine". Gemini broke that: it is reached
+ * through the same OpenAI-compatible base URL, and calling it "your own model" in the UI
+ * would send someone to switch on a laptop that has nothing to do with it. Hosts are
+ * matched by suffix so regional subdomains resolve the same way.
+ */
+const HOSTED_PROVIDERS: { suffix: string; label: string }[] = [
+  { suffix: 'googleapis.com', label: 'Gemini' },
+  { suffix: 'openai.com', label: 'OpenAI' },
+  { suffix: 'anthropic.com', label: 'Claude' },
+  { suffix: 'groq.com', label: 'Groq' },
+  { suffix: 'together.xyz', label: 'Together' },
+  { suffix: 'together.ai', label: 'Together' },
+  { suffix: 'mistral.ai', label: 'Mistral' },
+  { suffix: 'openrouter.ai', label: 'OpenRouter' },
+  { suffix: 'deepseek.com', label: 'DeepSeek' },
+  { suffix: 'perplexity.ai', label: 'Perplexity' },
+];
+
+function hostOf(baseUrl: string | undefined): string | null {
+  if (!baseUrl) return null;
+  try {
+    return new URL(baseUrl).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function hostedProvider(baseUrl: string | undefined): { suffix: string; label: string } | undefined {
+  const host = hostOf(baseUrl);
+  if (!host) return undefined;
+  return HOSTED_PROVIDERS.find(
+    (provider) => host === provider.suffix || host.endsWith(`.${provider.suffix}`),
+  );
+}
+
+/**
+ * Whether the endpoint is a deployment the user runs. Only this decides whether the UI
+ * talks about "your own model" — a phrase that has to be true to be useful.
+ */
+export function isSelfHostedEndpoint(env: NodeJS.ProcessEnv = process.env): boolean {
+  const baseUrl = getAiBaseUrl(env);
+  if (!baseUrl) return false;
+  return hostedProvider(baseUrl) === undefined;
+}
+
+/**
+ * What to call the model layer in front of a user. A name they recognise beats "the AI
+ * provider" when the next step is to go and look at a quota page.
+ */
+export function getModelProviderLabel(env: NodeJS.ProcessEnv = process.env): string {
+  const baseUrl = getAiBaseUrl(env);
+  if (!baseUrl) return 'OpenAI';
+  return hostedProvider(baseUrl)?.label ?? 'your own model';
+}
+
+/**
+ * When to spend a model request (ai/orchestrator/escalation.ts).
+ *
+ * `when-needed` is the default because the endpoints most people can actually point at
+ * — a free tier, a laptop — are rationed, and most everyday sentences are ones the rule
+ * parser matches exactly. `always` restores per-turn model use.
+ */
+export type AiCallPolicy = 'when-needed' | 'always';
+
+export function getAiCallPolicy(env: NodeJS.ProcessEnv = process.env): AiCallPolicy {
+  return env.AI_CALL_POLICY?.trim().toLowerCase() === 'always' ? 'always' : 'when-needed';
+}
+
 export type AiModelTierName = 'cheap' | 'strong';
 
 export function getAiModel(

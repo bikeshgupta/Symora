@@ -8,7 +8,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { isReachabilityFailure, ProviderHealth, ProviderUnavailableError } from './provider-health';
+import {
+  isRateLimitFailure,
+  isReachabilityFailure,
+  ProviderHealth,
+  ProviderUnavailableError,
+} from './provider-health';
 
 /** A clock the test moves by hand, so nothing here depends on wall time. */
 function fixedClock(start = 1_000_000) {
@@ -198,5 +203,54 @@ describe('ProviderHealth', () => {
     expect(error).toBeInstanceOf(ProviderUnavailableError);
     expect(error!.retryAt.getTime()).toBe(clock.now() + 60_000);
     expect(error!.message).toContain('ECONNREFUSED');
+  });
+});
+
+/**
+ * A quota that refills is not a machine that is off, and on a free tier it is the normal
+ * end of a busy day. The back-off is the same; what the user is told is not.
+ */
+describe('rate limiting', () => {
+  const rateLimit = Object.assign(new Error('Resource has been exhausted (e.g. check quota).'), {
+    name: 'RateLimitError',
+    status: 429,
+  });
+
+  it('is recognised from the status, the name, or the wording', () => {
+    expect(isRateLimitFailure(rateLimit)).toBe(true);
+    expect(isRateLimitFailure(Object.assign(new Error('nope'), { status: 429 }))).toBe(true);
+    expect(isRateLimitFailure(new Error('You have exceeded your quota for today'))).toBe(true);
+    expect(isRateLimitFailure(new Error('Too Many Requests'))).toBe(true);
+    expect(isRateLimitFailure(new Error('connect ECONNREFUSED'))).toBe(false);
+  });
+
+  it('backs off exactly as a connection failure does', () => {
+    const health = new ProviderHealth({ cooldownMs: 60_000 });
+    health.recordFailure(rateLimit);
+
+    expect(() => health.assertAvailable()).toThrow(ProviderUnavailableError);
+  });
+
+  it('reports itself as rate limited rather than unreachable', () => {
+    const health = new ProviderHealth({ cooldownMs: 60_000 });
+    health.recordFailure(rateLimit);
+
+    expect(health.snapshot().state).toBe('rate_limited');
+  });
+
+  it('goes back to unreachable when the next failure is a dead endpoint', () => {
+    const health = new ProviderHealth({ cooldownMs: 60_000 });
+    health.recordFailure(rateLimit);
+    health.recordFailure(Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }));
+
+    expect(health.snapshot().state).toBe('unreachable');
+  });
+
+  it('forgets the rate limit once the endpoint answers', () => {
+    const health = new ProviderHealth({ cooldownMs: 60_000 });
+    health.recordFailure(rateLimit);
+    health.recordSuccess();
+
+    expect(health.snapshot().state).toBe('ready');
   });
 });

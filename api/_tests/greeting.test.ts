@@ -127,11 +127,13 @@ describe('greeting', () => {
 
   it('still treats a greeting with a request in it as the request', async () => {
     // The greeting branch matches whole messages only; anything else would silently drop
-    // what the user actually asked for.
+    // what the user actually asked for. Whether the reminder is then read by the rule
+    // parser or by the model is a separate decision (escalation.ts) — what matters here
+    // is that the turn went to extraction at all, and the commitment exists to prove it.
     const response = await chat('hi, remind me to call the electrician on Saturday');
 
     expect(response.status).toBe(200);
-    expect(providerCalls).toBe(1); // it went to extraction, as it must
     expect(world.db.rows('commitments')).toHaveLength(1);
+    expect(world.db.rows('commitments')[0]!.type).toBe('REMINDER');
   });
 });

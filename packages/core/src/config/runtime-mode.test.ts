@@ -49,6 +49,7 @@ describe('getRuntimeCapabilities', () => {
       aiMode: 'offline',
       modelStatus: 'offline',
       selfHostedModel: false,
+      modelProvider: 'OpenAI',
       serverTranscription: false,
       draftingIsTemplated: true,
     });
@@ -59,6 +60,7 @@ describe('getRuntimeCapabilities', () => {
       aiMode: 'ai',
       modelStatus: 'ready',
       selfHostedModel: false,
+      modelProvider: 'OpenAI',
       serverTranscription: true,
       draftingIsTemplated: false,
     });
@@ -92,5 +94,44 @@ describe('getRuntimeCapabilities', () => {
     expect(
       getRuntimeCapabilities({ ...SELF_HOSTED, AI_API_KEY: 'sk-test' }).serverTranscription,
     ).toBe(false);
+  });
+});
+
+/**
+ * A hosted provider reached through AI_BASE_URL — Gemini's OpenAI-compatible endpoint is
+ * the case this exists for. Before this, any base URL meant "a machine you run", so the
+ * app told a Gemini user their own model was asleep.
+ */
+describe('a hosted provider behind a base URL', () => {
+  const GEMINI = {
+    AI_BASE_URL: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    AI_API_KEY: 'a-real-looking-key',
+    AI_MODEL_CHEAP: 'gemini-2.5-flash',
+  };
+
+  it('is not described as self-hosted, and is named', () => {
+    const capabilities = getRuntimeCapabilities(GEMINI);
+
+    expect(capabilities.aiMode).toBe('ai');
+    expect(capabilities.selfHostedModel).toBe(false);
+    expect(capabilities.modelProvider).toBe('Gemini');
+  });
+
+  it('still leaves transcription to the browser, because a chat endpoint is not a speech one', () => {
+    expect(getRuntimeCapabilities(GEMINI).serverTranscription).toBe(false);
+  });
+
+  it('calls an endpoint nobody recognises the user own', () => {
+    const own = getRuntimeCapabilities({ ...GEMINI, AI_BASE_URL: 'http://127.0.0.1:11434/v1' });
+
+    expect(own.selfHostedModel).toBe(true);
+    expect(own.modelProvider).toBe('your own model');
+  });
+
+  it('separates a spent quota from an endpoint that is not there', () => {
+    // On a free tier the first is the ordinary end of a busy day and clears by itself;
+    // the second is something to go and fix. Different sentences, different actions.
+    expect(getRuntimeCapabilities(GEMINI, { modelRateLimited: true }).modelStatus).toBe('rate_limited');
+    expect(getRuntimeCapabilities(GEMINI, { modelReachable: false }).modelStatus).toBe('unreachable');
   });
 });

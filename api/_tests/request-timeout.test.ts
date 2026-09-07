@@ -58,6 +58,7 @@ beforeEach(() => {
   process.env.AI_MODEL_CHEAP = 'test-cheap-model';
   delete process.env.AI_TURN_BUDGET_MS;
   delete process.env.API_REQUEST_TIMEOUT_MS;
+  delete process.env.AI_CALL_POLICY;
 });
 
 async function chat(text: string): Promise<TestResponse> {
@@ -74,7 +75,8 @@ describe('a request that hangs', () => {
     process.env.API_REQUEST_TIMEOUT_MS = '120';
     useAiProvider(() => new Promise(() => {}));
 
-    const response = await chat('remind me to call the electrician on Saturday');
+    // A sentence the rule parser cannot read, so the turn genuinely reaches the model.
+    const response = await chat('sort out the thing with the flat before it gets awkward');
 
     expect(response.status).toBe(504);
     const body = response.body as ErrorBody;
@@ -119,32 +121,21 @@ describe('a request that hangs', () => {
 });
 
 describe('the turn budget', () => {
-  it('skips the model for pasted text when the turn has spent its time', async () => {
-    // Interpreting a paste extracts twice. Two calls that each honour the request
-    // timeout still add up to more than the function has, so the second one is only made
-    // if there is budget left for it.
+  it('answers from the rule parser rather than starting a call it cannot finish', async () => {
+    // A turn with no time left must not begin a model request: the platform would kill
+    // the function mid-flight, which costs the user their answer and — on a metered
+    // endpoint — a request they never got the benefit of.
     process.env.AI_TURN_BUDGET_MS = '1';
+    process.env.AI_CALL_POLICY = 'always';
     let calls = 0;
     useAiProvider(async () => {
       calls += 1;
-      return completion({
-        toolCalls: [
-          {
-            id: 'call-1',
-            name: 'interpret_pasted_message',
-            arguments: {
-              pastedText: 'Your electricity bill of Rs 2,340 is due on 12 September.',
-              confidence: 0.9,
-            },
-          },
-        ],
-      });
+      return completion({ text: 'never reached' });
     });
 
-    const response = await chat('I was sent this — what should I do with it?');
+    const response = await chat('sort out the thing with the flat before it gets awkward');
 
     expect(response.status).toBe(200);
-    // The first call was made; the second was not, because the budget was gone.
-    expect(calls).toBe(1);
+    expect(calls).toBe(0);
   });
 });

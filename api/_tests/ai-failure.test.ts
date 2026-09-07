@@ -44,6 +44,11 @@ const ORIGINAL_ENV = { ...process.env };
  */
 process.env.OPENAI_API_KEY = 'sk-test-not-a-real-key';
 process.env.AI_MODEL_CHEAP = 'test-cheap-model';
+// Every case here is about what the *model* does, so every turn has to reach it. The
+// default policy asks the model only for what the rule parser cannot read, which would
+// quietly answer half of these before the provider stub was ever called
+// (packages/core/src/ai/orchestrator/escalation.ts).
+process.env.AI_CALL_POLICY = 'always';
 
 afterAll(() => {
   process.env = { ...ORIGINAL_ENV };

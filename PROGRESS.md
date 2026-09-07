@@ -28,6 +28,7 @@ OpenAI-compatible endpoint — Ollama on your own machine included. See
 | 10 — Self-hosted model + model scorecard | Done | — |
 | 11 — Two screens, and an answer to "hello" | Done | — |
 | 12 — A turn that always answers | Done | — |
+| 13 — Gemini, and a model request only when needed | Done | — |
 
 Total target: ~110–120h.
 
@@ -781,6 +782,55 @@ Still open:
       the environment cannot reach the deployment, and Vercel's logs are where the answer
       is. What is proven is that a slow or dead model can no longer take a turn down, and
       that whatever fails next says so with a code and a request id
+
+---
+
+## Phase 13 — Gemini, and a model request only when needed — Done
+
+A free tier changes the question from "can it call a model" to "should this turn call
+one". Both halves are here.
+
+Gemini:
+
+- [x] No new provider code. Gemini speaks the OpenAI-compatible API, so it is
+      `AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai` plus a key
+      and a model id — the same adapter, tool registry and domain services
+      (`docs/gemini-setup.md`)
+- [x] A base URL no longer means "a machine you run". Known hosted providers are
+      recognised and named — the UI says "Gemini is not answering", never "your own model
+      is not answering" about somebody else's data centre
+- [x] `rate_limited` is its own state, distinct from `unreachable` and `offline`. On a
+      free tier a 429 is the ordinary end of a busy day and it clears by itself; sending
+      someone to check their configuration for it wastes an afternoon
+- [x] Server transcription stays off for any base-URL endpoint, Gemini included: a chat
+      endpoint that speaks the OpenAI protocol is not a speech endpoint
+
+Frugality (`ai/orchestrator/escalation.ts`, `AI_CALL_POLICY`, default `when-needed`):
+
+- [x] The rule parser reads every message first. A clear, complete match is acted on as
+      it stands — the five things the greeting offers as examples, and the everyday
+      reads, all cost zero model requests
+- [x] The model is asked for what the parser missed, half-read, or read into arguments
+      the tool schema rejects. Those are the turns where it earns its cost
+- [x] Reads are the one relaxation: they write nothing, so a merely likely match is
+      enough for "what's pending?"
+- [x] Memory retrieval is deferred until the model is actually going to be asked — the
+      parser matches patterns, not context, so it was a database round trip that changed
+      nothing
+- [x] Every turn still records an `ai_usage_events` row, at zero tokens when nothing was
+      spent: the usage screen is how "am I near the cap?" gets answered, and a missing row
+      would read as lost data
+- [x] `AI_CALL_POLICY=always` restores a request per turn, for a key paid per token
+
+Proven by `api/_tests/model-frugality.test.ts` through the real route: the ordinary
+sentences write the right rows with zero provider calls, the confirmation gate still
+fires on a rule-read obligation, and the messy ones still reach the model.
+
+Still open:
+
+- [ ] The escalation bar is one number (`CLEAR_RULE_MATCH`) and a small read-only set.
+      Whether it is in the right place is a question for real usage — the corpus says
+      what the parser scores, not what users then had to rephrase.
 
 ---
 

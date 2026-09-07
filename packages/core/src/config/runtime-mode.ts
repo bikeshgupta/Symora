@@ -10,7 +10,13 @@
  * *narrows* what the model layer can do. A client cannot ask for a mode.
  */
 
-import { getAiBaseUrl, getAiApiKey, isAiConfigured } from './ai-config';
+import {
+  getAiApiKey,
+  getAiBaseUrl,
+  getModelProviderLabel,
+  isAiConfigured,
+  isSelfHostedEndpoint,
+} from './ai-config';
 
 export type AiMode = 'ai' | 'offline';
 
@@ -22,7 +28,7 @@ export type AiMode = 'ai' | 'offline';
  * model running on a machine the user switches off, and the two deserve different words
  * in front of a user — "not set up" and "your model is asleep" are not the same problem.
  */
-export type ModelStatus = 'offline' | 'ready' | 'unreachable';
+export type ModelStatus = 'offline' | 'ready' | 'unreachable' | 'rate_limited';
 
 export interface RuntimeCapabilities {
   aiMode: AiMode;
@@ -30,6 +36,12 @@ export interface RuntimeCapabilities {
   modelStatus: ModelStatus;
   /** True when the endpoint is a deployment the user runs, rather than a hosted API. */
   selfHostedModel: boolean;
+  /**
+   * What to call the model layer in front of a user — "Gemini", "OpenAI", "your own
+   * model". A name someone recognises is the difference between a message they can act
+   * on and one they cannot.
+   */
+  modelProvider: string;
   /** Server-side speech-to-text. Offline mode uses the browser's own recogniser. */
   serverTranscription: boolean;
   /** Message drafting quality differs by mode, and the UI says so. */
@@ -47,6 +59,12 @@ export interface CapabilityOptions {
    * network. Omitted means "not checked", which reads as ready.
    */
   modelReachable?: boolean;
+  /**
+   * Whether the endpoint is currently refusing for spending too fast. On a free tier
+   * this is the ordinary end of a busy day and it clears by itself, which is a different
+   * thing to tell a user than "not answering".
+   */
+  modelRateLimited?: boolean;
 }
 
 export function getRuntimeCapabilities(
@@ -55,17 +73,29 @@ export function getRuntimeCapabilities(
 ): RuntimeCapabilities {
   const aiMode = getAiMode(env);
   const modelStatus: ModelStatus =
-    aiMode === 'offline' ? 'offline' : options.modelReachable === false ? 'unreachable' : 'ready';
+    aiMode === 'offline'
+      ? 'offline'
+      : options.modelRateLimited
+        ? 'rate_limited'
+        : options.modelReachable === false
+          ? 'unreachable'
+          : 'ready';
 
   return {
     aiMode,
     modelStatus,
-    selfHostedModel: Boolean(getAiBaseUrl(env)),
-    // Server transcription goes to the same endpoint, so it needs a key: a self-hosted
-    // chat model is not necessarily a speech model, and claiming otherwise would hand
-    // the user a mic that silently fails.
+    // A base URL used to mean "a machine of yours". Gemini is reached through one too,
+    // and calling it "your own model" would send someone to switch on a laptop that has
+    // nothing to do with it (config/ai-config.ts).
+    selfHostedModel: isSelfHostedEndpoint(env),
+    modelProvider: getModelProviderLabel(env),
+    // Server transcription goes to OpenAI's own /audio/transcriptions, so it needs a
+    // hosted OpenAI key and no base URL. A chat endpoint that speaks the OpenAI protocol
+    // — Ollama, and Gemini's compatibility layer alike — is not a speech endpoint, and
+    // claiming otherwise would hand the user a mic that silently fails. Those
+    // deployments use the browser's own recogniser instead.
     serverTranscription: aiMode === 'ai' && Boolean(getAiApiKey(env)) && !getAiBaseUrl(env),
-    // Templated whenever the model cannot actually be reached, not merely when none is
+    // Templated whenever the model cannot actually be used, not merely when none is
     // configured — a draft the user is about to send should never be described as better
     // than it is.
     draftingIsTemplated: modelStatus !== 'ready',

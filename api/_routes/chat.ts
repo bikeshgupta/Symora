@@ -26,6 +26,8 @@ import {
   extractIntentResilient,
   DEGRADED_NO_INTENT_TEXT,
   QUOTA_EXHAUSTED_NO_INTENT_TEXT,
+  decideEscalation,
+  getAiCallPolicy,
   getAiMode,
   getAiTurnBudgetMs,
   startTurnBudget,
@@ -39,6 +41,7 @@ import {
   type ChatResponseBody,
   type TurnSource,
   type IntentName,
+  type MemoryContextEntry,
   type MessageRecord,
 } from '@symora/core';
 import { ApiError } from '../_middleware/errors';
@@ -210,26 +213,71 @@ export default withApiHandler(async (req, res, ctx) => {
   // context — so offline mode skips the query rather than paying for a result it will
   // discard. Memory itself is unaffected: it is still stored, listed, edited and deleted
   // exactly as before, it just does not inform offline extraction.
-  const memories =
-    aiMode === 'ai'
-      ? await memoryService.retrieveRelevant(client, ctx.user.id, { text: body.text }, now, ctx.user.timezone)
-      : [];
+  /**
+   * Understand one piece of text, spending a model request only if it is needed.
+   *
+   * The rule parser reads it first, every time. A clear, complete match is acted on as
+   * it stands — "Home loan 42500 every month on 5th" needs no model, and on a rationed
+   * endpoint spending a request on it means the sentence that actually needed one gets
+   * refused later (ai/orchestrator/escalation.ts). Anything the parser missed, half-read,
+   * or read into arguments the tool schema rejects goes to the model, which is what it
+   * is for.
+   *
+   * Everything downstream is identical either way: the same confidence gate, the same
+   * confirmation rules, the same typed tools. Only the reader changes.
+   */
+  async function understand(
+    text: string,
+    loadMemories: () => Promise<MemoryContextEntry[]>,
+    label: 'message' | 'pasted text' = 'message',
+  ) {
+    const ruleRead = extractIntentOffline(text, language, { temporal });
+    if (aiMode === 'offline') return { ...ruleRead, degraded: false };
+
+    const decision = decideEscalation({
+      offline: ruleRead,
+      policy: getAiCallPolicy(),
+      validate: (intent, args) => validateToolArgs(intent, args).ok,
+    });
+
+    if (!decision.escalate) {
+      ctx.logger.info(`Answered the ${label} from the rule parser; no model request spent.`, {
+        intent: ruleRead.intent ?? undefined,
+        confidence: ruleRead.confidence,
+      });
+      return { ...ruleRead, degraded: false };
+    }
+
+    // The turn's remaining model budget is what bounds this call, so a turn cannot
+    // outlive the serverless function (ai/orchestrator/turn-budget.ts).
+    if (!budget.allows()) {
+      ctx.logger.warn(`Turn budget spent before reading the ${label}; used the rule parser.`);
+      return { ...ruleRead, degraded: true };
+    }
+
+    return extractIntentResilient(openAiProvider, text, language, {
+      // Retrieval is deferred until the model is actually going to be asked: the rule
+      // parser matches patterns, not context, so loading memories for a turn it answers
+      // is a database round trip that changes nothing.
+      memories: await loadMemories(),
+      temporal,
+      timeoutMs: budget.remainingMs(),
+      forcePaste: label === 'pasted text' ? true : undefined,
+      onProviderFailure: (error) =>
+        ctx.logger.warn('AI provider failed; fell back to the rule-based parser.', {
+          reason: decision.reason,
+          cause: error instanceof Error ? error.message : String(error),
+        }),
+    });
+  }
+
+  const memories = () =>
+    memoryService.retrieveRelevant(client, ctx.user.id, { text: body.text }, now, ctx.user.timezone);
 
   // A configured provider that fails mid-turn falls back to the same rule parser that
   // serves offline mode rather than 500ing the request, and says so when it does
   // (ai/orchestrator/resilient-extraction.ts).
-  const extraction =
-    aiMode === 'offline'
-      ? { ...extractIntentOffline(body.text, language, { temporal }), degraded: false }
-      : await extractIntentResilient(openAiProvider, body.text, language, {
-          memories,
-          temporal,
-          timeoutMs: budget.remainingMs(),
-          onProviderFailure: (error) =>
-            ctx.logger.warn('AI provider failed; fell back to the rule-based parser.', {
-              cause: error instanceof Error ? error.message : String(error),
-            }),
-        });
+  const extraction = await understand(body.text, memories);
 
   // Recorded in both modes. An offline turn costs nothing and reports zero tokens, which
   // is exactly what the usage screen should show — a gap would look like lost data.
@@ -267,40 +315,19 @@ export default withApiHandler(async (req, res, ctx) => {
     const pasteCategory = categorizePastedText(pastedText);
     // Re-retrieve against the pasted text itself: what is relevant to "here is a
     // message from my landlord" is rarely what is relevant to the message's contents.
-    const pastedMemories =
-      aiMode === 'ai'
-        ? await memoryService.retrieveRelevant(
-            client,
-            ctx.user.id,
-            { text: pastedText, intent: 'interpret_pasted_message' },
-            now,
-            ctx.user.timezone,
-          )
-        : [];
-    // The second call of the turn, and the one the budget exists for: two calls that
-    // each honour the request timeout still add up to more than the function has. When
-    // the first call spent the budget, the pasted text is parsed by the rule parser and
-    // the reply says the understanding was degraded — rather than the platform killing
-    // the turn and the user getting nothing at all.
-    const nestedBudgetSpent = aiMode === 'ai' && !budget.allows();
-    if (nestedBudgetSpent) {
-      ctx.logger.warn('Turn budget spent before interpreting pasted text; used the rule-based parser.');
-    }
-    const nested =
-      aiMode === 'offline' || nestedBudgetSpent
-        ? {
-            ...extractIntentOffline(pastedText, language, { temporal }),
-            degraded: nestedBudgetSpent,
-          }
-        : await extractIntentResilient(openAiProvider, pastedText, language, {
-            memories: pastedMemories,
-            temporal,
-            timeoutMs: budget.remainingMs(),
-            onProviderFailure: (error) =>
-              ctx.logger.warn('AI provider failed on pasted text; fell back to the rule-based parser.', {
-                cause: error instanceof Error ? error.message : String(error),
-              }),
-          });
+    const pastedMemories = () =>
+      memoryService.retrieveRelevant(
+        client,
+        ctx.user.id,
+        { text: pastedText, intent: 'interpret_pasted_message' },
+        now,
+        ctx.user.timezone,
+      );
+    // The second reading of the turn, and the one both the budget and the escalation
+    // rule exist for: two model calls that each honour the request timeout still add up
+    // to more than the function has, and a bank SMS the rule parser reads cleanly does
+    // not need either of them.
+    const nested = await understand(pastedText, pastedMemories, 'pasted text');
     await aiUsageRepository.recordAiUsage(client, {
       userId: ctx.user.id,
       provider: openAiProvider.name,

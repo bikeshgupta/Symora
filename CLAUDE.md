@@ -67,7 +67,7 @@ to WhatsApp and email.
 
 ## Current status
 
-Phases 1-12 are complete. What remains before a private test is provisioning, not code:
+Phases 1-13 are complete. What remains before a private test is provisioning, not code:
 a Vercel project, a Supabase project with `supabase/migrations/` applied
 (`npm run db:check` reports what is behind), a Firebase project, and a browser pass over
 both themes and voice.
@@ -87,16 +87,27 @@ an API key or an `AI_BASE_URL`. Offline, the language layer falls back to the ru
 parser in `ai/offline/`, drafting to templates, and voice to the browser's Web Speech
 API; every deterministic feature is unchanged.
 
-The endpoint does not have to be OpenAI — Ollama, vLLM, LM Studio, Groq and Together all
-speak the same OpenAI-compatible API, so `AI_BASE_URL` points Symora at a model on your
-own machine. Two things exist because of that: a JSON fallback for models whose native
-tool calling is unreliable, and a circuit breaker so that a machine which is switched off
-costs one slow turn rather than one slow turn per message. See `docs/self-hosted-model.md`.
+The endpoint does not have to be OpenAI — Gemini, Ollama, vLLM, LM Studio, Groq and
+Together all speak the same OpenAI-compatible API, so `AI_BASE_URL` points Symora at a
+free tier or at a model on your own machine. Three things exist because of that: a JSON
+fallback for models whose native tool calling is unreliable, a circuit breaker so that a
+machine which is switched off costs one slow turn rather than one slow turn per message,
+and the escalation rule below. See `docs/self-hosted-model.md` and `docs/gemini-setup.md`.
 
-There are three states, not two, and they must not share a word: `offline` (nothing
-configured), `unreachable` (configured, not answering — a machine the user can switch
-on), and `ready`. When adding a feature that needs the model, gate it on the mode and
-give offline a deterministic path or an honest message — never a silent failure.
+**A model request is spent only when one is needed.** The rule-based parser reads every
+message first; the model is asked for what it could not handle — an unrecognised
+sentence, a partial match, or arguments the tool schema rejects
+(`ai/orchestrator/escalation.ts`). "Paid the electricity bill today" costs nothing. This
+is what makes a rationed endpoint usable, and it is the default; `AI_CALL_POLICY=always`
+restores a request per turn for a key you pay per token. Understanding is the only thing
+that differs — the confidence gate, the confirmation rules and the typed tools are the
+same either way.
+
+There are four states, and they must not share a word: `offline` (nothing configured),
+`unreachable` (configured, not answering — a machine the user can switch on),
+`rate_limited` (a quota spent, clearing by itself) and `ready`. When adding a feature
+that needs the model, gate it on the mode and give offline a deterministic path or an
+honest message — never a silent failure.
 
 See `PROGRESS.md` for the phase-by-phase checklist and acceptance criteria. Update it
 whenever a phase item is completed.
@@ -128,6 +139,8 @@ deliberately, not imported.
   project progresses
 - `docs/self-hosted-model.md` — pointing Symora at a model you run yourself: choosing one
   with the scorecard, reaching a home machine from Vercel, and what happens when it is off
+- `docs/gemini-setup.md` — pointing Symora at Gemini's free tier: the four variables,
+  which turns actually spend a request, and what happens at the quota
 
 ## Repository layout
 
