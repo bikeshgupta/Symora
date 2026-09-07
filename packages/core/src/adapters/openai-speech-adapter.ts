@@ -11,7 +11,7 @@
  */
 
 import OpenAI from 'openai';
-import { readTimeoutMs } from './openai-provider';
+import { getAiApiKey, readTimeoutMs } from '../config/ai-config';
 import type {
   SpeechAdapter,
   SpeechLanguageHint,
@@ -19,9 +19,18 @@ import type {
   TranscriptionResult,
 } from './speech-adapter';
 
+/**
+ * Deliberately does NOT honour AI_BASE_URL.
+ *
+ * A self-hosted chat endpoint is not a speech endpoint — pointing transcription at
+ * Ollama would 404 on the first press of the mic. Speech goes to the hosted API or
+ * nowhere, and `getRuntimeCapabilities` reports `serverTranscription: false` in every
+ * other case so the client uses the browser's own recogniser instead of offering a mic
+ * that cannot work.
+ */
 function getClient(): OpenAI {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error('OPENAI_API_KEY is not configured.');
+  const apiKey = getAiApiKey();
+  if (!apiKey) throw new Error('AI_API_KEY (or OPENAI_API_KEY) is not configured.');
   return new OpenAI({ apiKey });
 }
 

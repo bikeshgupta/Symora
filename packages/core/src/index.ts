@@ -1,6 +1,7 @@
 export * from './types';
 export * from './config/feature-flags';
 export * from './config/runtime-mode';
+export * from './config/ai-config';
 export * from './repositories';
 export * from './adapters';
 export * from './ai';

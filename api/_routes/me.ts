@@ -5,6 +5,7 @@
  */
 
 import {
+  getProviderHealth,
   getRuntimeCapabilities,
   type ApiSuccessBody,
   type RuntimeCapabilities,
@@ -29,8 +30,14 @@ export default withApiHandler(async (req, res, ctx) => {
     throw new ApiError('METHOD_NOT_ALLOWED', `${req.method} is not allowed on /api/me.`);
   }
 
+  // Reachability is read here rather than probed: the adapter already knows whether the
+  // endpoint answered recently (adapters/provider-health.ts), and firing a request at a
+  // machine that is off just to render a badge would make every page load pay the
+  // timeout this whole mechanism exists to avoid.
+  const modelReachable = getProviderHealth().state === 'ready';
+
   const body: ApiSuccessBody<MeResponseBody> = {
-    data: { ...ctx.user, capabilities: getRuntimeCapabilities() },
+    data: { ...ctx.user, capabilities: getRuntimeCapabilities(process.env, { modelReachable }) },
   };
   res.status(200).json(body);
 });
