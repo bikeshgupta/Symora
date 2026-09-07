@@ -26,6 +26,7 @@ OpenAI-compatible endpoint — Ollama on your own machine included. See
 | 8 — Notifications + usage + privacy basics | Done | 8h |
 | 9 — Testing / hardening | Done | 15–25h |
 | 10 — Self-hosted model + model scorecard | Done | — |
+| 11 — Two screens, and an answer to "hello" | Done | — |
 
 Total target: ~110–120h.
 
@@ -670,6 +671,60 @@ Still open:
       round trip per turn — a worse trade at V1 volumes.
 - [ ] No model has actually been scored yet. `npm run ai:score` has been run end to end
       against a local stub endpoint, not against a real model.
+
+---
+
+## Phase 11 — Two screens, and an answer to "hello" — Done
+
+The first private-test screenshot showed both problems at once: "Hello Symora" got no
+useful reply, and the Ask Symora box sat fifth on a page of panels with about a fifth of
+a phone screen to itself.
+
+Greeting:
+
+- [x] `ai/orchestrator/small-talk.ts` — deterministic detection of a greeting or a
+      "what can you do", in English, Hindi and Hinglish, Devanagari included. Not a
+      thirteenth intent: a greeting writes nothing, so it answers on the conversational
+      branch that already existed
+- [x] The reply says what Symora can do and offers five things to try, as
+      `suggestion-chips` — a row of the allowlisted `SuggestionChip`, with prompts the
+      offline rule parser also understands, so a first example never fails on a
+      deployment with no model
+- [x] Checked before extraction: no model call, no tokens, identical answer offline,
+      unreachable and ready
+- [x] Whole-message matching only — "hi, remind me to call the doctor" is still a
+      reminder (`api/_tests/greeting.test.ts`)
+
+Two screens:
+
+- [x] **Chat** owns the screen — transcript, a composer fixed at the bottom, an empty
+      state that says what to type. Confirmation cards, drafts and chips render inline in
+      the thread
+- [x] **Today** carries everything Symora is holding, in sections: Overview (the Phase 6
+      home), Money, Commitments, Drafts, You
+- [x] The conversation lives in the shell above both screens, so switching to Today and
+      back does not lose it
+- [x] Paste-to-Symora folded into the composer — a long paste is recognised, labelled in
+      a chip the user can dismiss, and framed as third-party text. Its own panel used to
+      put the reply on a different part of the page from where the user was looking
+- [x] `@symora/core/client` — a browser-safe entry point. Importing a *value* from the
+      root barrel pulls the Supabase client and the OpenAI SDK into the PWA bundle and
+      fails at runtime on `process`; type-only imports were always fine
+
+Also fixed:
+
+- [x] "The string did not match the expected pattern." on every card — a non-JSON
+      response (a platform error page from a deployment with no environment variables)
+      reached `response.json()` and Safari's parser message was rendered as though Symora
+      had said it. `lib/api-client.ts` now reads the body as text, and says which part of
+      the system is at fault
+- [x] `PaymentSummary` headed itself "2026-09". A period key is data; the heading is now
+      "September 2026", formatted without constructing a Date
+
+Still open:
+
+- [ ] Both themes are exercised in a headless browser against stubbed API data, not in a
+      real one against a real deployment. The Phase 6 line above stands
 
 ---
 

@@ -44,6 +44,17 @@ export type ChatUiSchema =
       };
     }
   | {
+      /**
+       * A row of `SuggestionChip`s — the allowlisted component, rendered from validated
+       * props. The server decides which prompts to offer; tapping one only fills the
+       * composer, so a chip can never bypass a confirmation gate.
+       */
+      component: 'suggestion-chips';
+      props: {
+        suggestions: { id: string; label: string; prompt: string }[];
+      };
+    }
+  | {
       component: 'message-draft';
       props: {
         variants: { variant: 'short' | 'detailed'; text: string; handoff: { whatsappUrl: string; mailtoUrl: string } }[];

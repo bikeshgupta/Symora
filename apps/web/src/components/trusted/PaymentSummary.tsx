@@ -12,6 +12,23 @@ import type { HomePayload } from '@symora/core';
  * listed separately rather than combined, because a single cross-currency total would be
  * an implicit conversion.
  */
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/**
+ * "2026-09" is a period key, not a heading. It is formatted here rather than parsed into
+ * a Date: a month key has no instant in it, and constructing one would invite exactly the
+ * timezone slip .claude/rules/finance-rules.md warns about. An unrecognised key is shown
+ * as it is, never as "Invalid Date".
+ */
+function formatPeriod(period: string): string {
+  const [year, month] = period.split('-');
+  const name = MONTHS[Number(month) - 1];
+  return name && year ? `${name} ${year}` : period;
+}
+
 export function PaymentSummary({ payments }: { payments: HomePayload['payments'] }) {
   const hasAnything =
     payments.requiredByCurrency.length > 0 || payments.outstandingByCurrency.length > 0;
@@ -20,7 +37,7 @@ export function PaymentSummary({ payments }: { payments: HomePayload['payments']
     <CardShell as="section" aria-labelledby="payments-heading">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 id="payments-heading" className="text-heading text-text-primary">
-          {payments.period}
+          {formatPeriod(payments.period)}
         </h2>
         {payments.overdueCount > 0 && (
           <StatusPill

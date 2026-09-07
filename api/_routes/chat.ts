@@ -11,6 +11,8 @@ import {
   composeConfirmation,
   composeConversational,
   composeMissingDetails,
+  composeSmallTalk,
+  detectSmallTalk,
   composeToolResult,
   conversationsRepository,
   detectLanguage,
@@ -168,6 +170,24 @@ export default withApiHandler(async (req, res, ctx) => {
     const result = await runTool(toolCtx, body.confirm.intent, body.confirm.args);
     const composed = composeToolResult(result);
     await respond(composed.text, composed.ui, body.confirm.intent);
+    return;
+  }
+
+  // -- "Hello Symora." --
+  //
+  // A greeting is understood, not merely unmatched, so it gets an answer that says what
+  // Symora can do rather than an apology for not understanding
+  // (ai/orchestrator/small-talk.ts). It is checked before extraction because it writes
+  // nothing and needs no model: the reply is the same whether a provider is configured,
+  // unreachable, or absent, and it costs no tokens. Detection matches the whole message,
+  // so "hi, remind me to call the doctor" is still a reminder.
+  if (detectSmallTalk(body.text)) {
+    // "hi" carries no language of its own, so a bare greeting is exactly the ambiguous
+    // case .claude/rules/ai-pipeline.md § Language says to settle with preferred_language.
+    // Anything the detector actually recognised — "नमस्ते", "kaise ho" — wins over it.
+    const replyLanguage = language === 'en' ? ctx.user.preferredLanguage : language;
+    const composed = composeSmallTalk(replyLanguage, ctx.user.displayName);
+    await respond(composed.text, composed.ui, null);
     return;
   }
 

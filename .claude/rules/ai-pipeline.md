@@ -49,6 +49,13 @@ Input that matches none of them is answered conversationally or with a clarifyin
 question. Do not invent a new intent to make an input fit — adding an intent is a
 deliberate change to the registry, not an inline decision.
 
+**Small talk is the one short-circuit.** A message that is *only* a greeting, or a
+"what can you do", is detected deterministically before extraction
+(`ai/orchestrator/small-talk.ts`) and answered with an offer of help plus five things to
+try. It writes nothing, costs no model call, and reads the same offline, unreachable and
+ready. It matches the whole message, never a prefix — "hi, remind me to call the doctor"
+is a reminder and goes through extraction like anything else.
+
 ## Confidence and confirmation
 
 Two separate gates. Confidence is "did I understand?"; risk is "how bad is it if I'm
