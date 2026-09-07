@@ -8,7 +8,19 @@
  */
 
 export type * from './ai-provider';
-export { openAiProvider } from './openai-provider';
+export {
+  openAiProvider,
+  getProviderHealth,
+  resetProviderHealth,
+  resetAiClient,
+} from './openai-provider';
+export {
+  ProviderHealth,
+  ProviderUnavailableError,
+  isReachabilityFailure,
+  type ProviderState,
+  type ProviderHealthSnapshot,
+} from './provider-health';
 export type * from './speech-adapter';
 export type * from './notification-adapter';
 export type * from './messaging-adapter';

@@ -81,14 +81,22 @@ repository and a cross-user test proves nothing; that is why the fake is a row s
 `packages/core/src/testing/schema.ts` mirrors the migrations and `migrations.test.ts`
 fails if the two drift, so a new table or constraint has to be reflected there.
 
-**Symora runs with no AI provider key.** `getAiMode()` (config/runtime-mode.ts) reads
-configuration only and needs both `OPENAI_API_KEY` and `AI_MODEL_CHEAP` to leave offline
-mode. Offline, the language layer falls back to the rule-based parser in
-`ai/offline/`, drafting to templates, and voice to the browser's Web Speech API; every
-deterministic feature is unchanged. The substitution happens behind the `AIProvider`
-boundary, so adding a key later is configuration, not a rewrite. When adding a feature
-that needs the model, gate it on the mode and give offline a deterministic path or an
-honest message — never a silent failure.
+**Symora runs with no AI model, and with a model you host yourself.** `getAiMode()`
+(config/runtime-mode.ts) reads configuration only: it needs `AI_MODEL_CHEAP` plus either
+an API key or an `AI_BASE_URL`. Offline, the language layer falls back to the rule-based
+parser in `ai/offline/`, drafting to templates, and voice to the browser's Web Speech
+API; every deterministic feature is unchanged.
+
+The endpoint does not have to be OpenAI — Ollama, vLLM, LM Studio, Groq and Together all
+speak the same OpenAI-compatible API, so `AI_BASE_URL` points Symora at a model on your
+own machine. Two things exist because of that: a JSON fallback for models whose native
+tool calling is unreliable, and a circuit breaker so that a machine which is switched off
+costs one slow turn rather than one slow turn per message. See `docs/self-hosted-model.md`.
+
+There are three states, not two, and they must not share a word: `offline` (nothing
+configured), `unreachable` (configured, not answering — a machine the user can switch
+on), and `ready`. When adding a feature that needs the model, gate it on the mode and
+give offline a deterministic path or an honest message — never a silent failure.
 
 See `PROGRESS.md` for the phase-by-phase checklist and acceptance criteria. Update it
 whenever a phase item is completed.
@@ -118,6 +126,8 @@ deliberately, not imported.
   the adapter interface list
 - `docs/architecture/` — architecture decision records and design notes added as the
   project progresses
+- `docs/self-hosted-model.md` — pointing Symora at a model you run yourself: choosing one
+  with the scorecard, reaching a home machine from Vercel, and what happens when it is off
 
 ## Repository layout
 
@@ -136,9 +146,11 @@ packages/core/src/
                        usage, privacy)
   testing/             test-only: the in-memory Supabase fake, the schema mirror,
                        fixtures, and the migration reader. Not exported from the index.
-  ai/offline/          rule-based parser + template drafter used when no AI key is set
+  ai/offline/          rule-based parser + template drafter used when no model is set
   ai/orchestrator/     language detection, routing, intent extraction, confidence
   ai/tools/            typed tool registry
+  ai/corpus/           the NLP regression corpus as shared JSON — read by the offline
+                       and language tests and by `npm run ai:score`
   repositories/        the only layer that issues database queries
   adapters/            side-adapter interfaces (+ the OpenAI AIProvider implementation)
   types/               shared domain and API types

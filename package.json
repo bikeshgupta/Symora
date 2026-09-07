@@ -17,7 +17,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
-    "db:check": "node scripts/check-schema.mjs"
+    "db:check": "node scripts/check-schema.mjs",
+    "ai:score": "node scripts/score-model.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

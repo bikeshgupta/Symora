@@ -3,13 +3,15 @@
 Phase-by-phase build tracker. Source of truth for scope and acceptance criteria:
 `docs/Symora_V1_Requirements_and_Architecture_FULL.md`.
 
-**Overall status: Phases 1-9 complete**, subject to the live verification listed under
+**Overall status: Phases 1-10 complete**, subject to the live verification listed under
 each phase — the whole suite runs without a Firebase project, a Supabase project or an AI
 key, which is a strength for CI and a limit on what it can prove.
 
-**Symora runs with no AI provider key.** Every deterministic feature works either way;
-the language layer falls back to a rule-based parser, drafts to templates, and voice to
-the browser's own recogniser. See "Offline mode" below.
+**Symora runs with no AI model, and with a model you host yourself.** Every deterministic
+feature works either way; the language layer falls back to a rule-based parser, drafts to
+templates, and voice to the browser's own recogniser. `AI_BASE_URL` points it at any
+OpenAI-compatible endpoint — Ollama on your own machine included. See
+`docs/self-hosted-model.md`.
 
 | Phase | Status | Estimate |
 | --- | --- | --- |
@@ -23,6 +25,7 @@ the browser's own recogniser. See "Offline mode" below.
 | 7 — Voice + Hindi/Hinglish | Done | 10h |
 | 8 — Notifications + usage + privacy basics | Done | 8h |
 | 9 — Testing / hardening | Done | 15–25h |
+| 10 — Self-hosted model + model scorecard | Done | — |
 
 Total target: ~110–120h.
 
@@ -425,7 +428,7 @@ Known limits of offline mode, stated rather than hidden:
 
 ## Phase 9 — Testing / hardening — 15–25h — Done
 
-599 tests across 47 files. The whole suite runs with no Firebase project, no Supabase
+750 tests across 51 files. The whole suite runs with no Firebase project, no Supabase
 project, no AI key and no network — see "What the suite cannot prove" at the end of this
 section for what that costs.
 
@@ -601,6 +604,72 @@ environment does not have.
 - [ ] `DEGRADED_NO_INTENT_TEXT` and the parser's clarifying prompts ("Which payment did
       you make?") are English-only. The top-level no-intent fallback is now
       language-aware; these are not yet.
+
+---
+
+## Phase 10 — Self-hosted model + model scorecard — Done
+
+Not in the original plan. Added because running the model yourself is cheaper, private,
+and not locked to a vendor — and because the architecture already had the seam for it.
+
+Build:
+
+- [x] `AI_BASE_URL` — any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio,
+      llama.cpp, Groq, Together). Settings renamed `OPENAI_*` → `AI_*`, with
+      `OPENAI_API_KEY` still read so an existing deployment keeps working.
+      (`config/ai-config.ts`)
+- [x] A self-hosted endpoint counts as configured without an API key — one behind a
+      private tunnel may legitimately have no auth — while the hosted API still requires
+      one, so a placeholder can never be sent to OpenAI
+- [x] JSON fallback for structured output (`AI_TOOL_MODE`) — small open models are
+      inconsistent at native tool calling, so a refused `tools` parameter falls back to a
+      JSON object mapped back into a tool call inside the adapter
+- [x] Circuit breaker (`adapters/provider-health.ts`) — the first turn against a
+      switched-off machine pays the timeout, the rest fail in microseconds. Only
+      reachability failures open it; a 400 or 401 fails identically forever and backing
+      off would hide a fixable fault
+- [x] `modelStatus`: `offline` | `ready` | `unreachable` — "not set up" and "your machine
+      is off" are different problems and must not share a word
+- [x] `npm run ai:score` — the NLP corpus as a model scorecard, reporting intent
+      accuracy, argument accuracy and a per-language breakdown against any endpoint
+- [x] The corpus moved to shared JSON (`ai/corpus/nlp-corpus.json`), read by the offline
+      tests, the language tests and the scorecard, with `corpus.test.ts` guarding the data
+- [x] `docs/self-hosted-model.md` — choosing a model, the tunnel, Ollama's lack of
+      authentication, the timeout ordering, and what degrades when the machine is off
+
+Fixed:
+
+- [x] **The timeout ceiling.** `vercel.json` set no `maxDuration` while
+      `AI_REQUEST_TIMEOUT_MS` defaulted to 30s, so a slow self-hosted model would have
+      been killed by the platform first and returned a raw 504 — the graceful fallback
+      never running. `maxDuration` is now 30s and the default timeout 12s.
+- [x] **The circuit breaker did not fire for the case it exists for.** The OpenAI SDK
+      wraps a refused connection in an error whose `name` is the bare `Error`, whose
+      `code` is undefined, and whose message is the unhelpful "Connection error." — the
+      `ECONNREFUSED` sits one level down on `cause`. Every mocked test passed while a
+      switched-off laptop was never classified as unreachable. Found only by testing
+      against a real closed port; the detection now walks the cause chain.
+- [x] Server transcription no longer follows `AI_BASE_URL` — a self-hosted chat model is
+      not a speech model, and offering a mic that 404s is worse than not offering one
+
+Verified:
+
+- [x] Every deterministic surface answers with the endpoint dead
+      (`api/_tests/model-unreachable.test.ts`)
+- [x] A chat turn degrades to the rule parser rather than failing, the confirmation gate
+      does not relax, and no endpoint address reaches the user
+- [x] The adapter is exercised against a real HTTP server, not only a stubbed SDK — the
+      only way `baseURL` was ever actually tested
+- [x] Mutation-checked: removing the breaker, the JSON fallback, the base URL or the
+      cause walk each fails the suite; three of those four failed nothing before
+
+Still open:
+
+- [ ] The breaker's state is per warm serverless instance, not cluster-wide, so the first
+      turn on a cold instance pays the timeout again. Persisting it would cost a database
+      round trip per turn — a worse trade at V1 volumes.
+- [ ] No model has actually been scored yet. `npm run ai:score` has been run end to end
+      against a local stub endpoint, not against a real model.
 
 ---
 
