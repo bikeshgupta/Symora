@@ -1,10 +1,30 @@
 import { useCallback, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
-import type { ChatMessageView, ChatResponseBody, ChatUiSchema, IntentName } from '@symora/core';
+import type {
+  ChatMessageView,
+  ChatResponseBody,
+  ChatUiSchema,
+  IntentName,
+} from '@symora/core';
 
 type ConfirmationProps = Extract<ChatUiSchema, { component: 'confirmation-prompt' }>['props'];
 type DraftProps = Extract<ChatUiSchema, { component: 'message-draft' }>['props'];
+type SuggestionProps = Extract<ChatUiSchema, { component: 'suggestion-chips' }>['props'];
+
+/**
+ * One turn in the transcript, with whatever trusted component the server attached to it.
+ *
+ * The UI schema is kept per turn rather than as one "latest" slot, because the chat
+ * screen renders a conversation: a draft written three turns ago should still be on
+ * screen where it was written. What stays single is *actionability* — only the last
+ * turn's confirmation can be confirmed (see `pendingConfirmation`), so an older card can
+ * never be tapped into a write the user has since moved past.
+ */
+export interface ChatEntry {
+  message: ChatMessageView;
+  ui: ChatUiSchema | null;
+}
 
 interface SendPayload {
   text: string;
@@ -19,9 +39,7 @@ interface SendPayload {
 
 export function useChat() {
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
-  const [messages, setMessages] = useState<ChatMessageView[]>([]);
-  const [pendingConfirmation, setPendingConfirmation] = useState<ConfirmationProps | null>(null);
-  const [draft, setDraft] = useState<DraftProps | null>(null);
+  const [entries, setEntries] = useState<ChatEntry[]>([]);
 
   const mutation = useMutation({
     mutationFn: (payload: SendPayload) =>
@@ -31,31 +49,37 @@ export function useChat() {
       }),
     onSuccess: (data) => {
       setConversationId(data.conversationId);
-      setMessages((prev) => [...prev, data.message]);
-      setPendingConfirmation(data.ui?.component === 'confirmation-prompt' ? data.ui.props : null);
-      setDraft(data.ui?.component === 'message-draft' ? data.ui.props : null);
+      setEntries((prev) => [...prev, { message: data.message, ui: data.ui }]);
     },
   });
 
   const sendMessage = useCallback(
     (text: string, source: 'chat' | 'voice' = 'chat') => {
-      setMessages((prev) => [
+      setEntries((prev) => [
         ...prev,
         {
-          id: crypto.randomUUID(),
-          role: 'user',
-          content: text,
-          language: null,
-          intent: null,
-          createdAt: new Date().toISOString(),
+          message: {
+            id: crypto.randomUUID(),
+            role: 'user',
+            content: text,
+            language: null,
+            intent: null,
+            createdAt: new Date().toISOString(),
+          },
+          ui: null,
         },
       ]);
-      setPendingConfirmation(null);
-      setDraft(null);
       mutation.mutate({ text, source });
     },
     [mutation],
   );
+
+  const lastEntry = entries.at(-1);
+  const lastUi = lastEntry?.ui ?? null;
+  const pendingConfirmation: ConfirmationProps | null =
+    lastUi?.component === 'confirmation-prompt' ? lastUi.props : null;
+  const suggestions: SuggestionProps['suggestions'] =
+    lastUi?.component === 'suggestion-chips' ? lastUi.props.suggestions : [];
 
   /**
    * Confirms the pending proposal, optionally with corrections the user made on the card.
@@ -93,18 +117,30 @@ export function useChat() {
     [mutation, pendingConfirmation],
   );
 
-  const cancel = useCallback(() => setPendingConfirmation(null), []);
+  /**
+   * Declining a proposal drops the card rather than silently leaving it on screen. The
+   * turn itself stays in the transcript — the user asked something, and the record of
+   * what Symora proposed should not vanish with the card.
+   */
+  const cancel = useCallback(() => {
+    setEntries((prev) =>
+      prev.map((entry, index) =>
+        index === prev.length - 1 && entry.ui?.component === 'confirmation-prompt'
+          ? { ...entry, ui: null }
+          : entry,
+      ),
+    );
+  }, []);
 
-  // The last thing Symora said, for surfaces that show a single reply rather than a
-  // transcript (the paste panel).
-  const lastAssistantText =
-    [...messages].reverse().find((message) => message.role === 'assistant')?.content ?? null;
+  function draftOf(entry: ChatEntry): DraftProps | null {
+    return entry.ui?.component === 'message-draft' ? entry.ui.props : null;
+  }
 
   return {
-    messages,
+    entries,
     pendingConfirmation,
-    draft,
-    lastAssistantText,
+    suggestions,
+    draftOf,
     sendMessage,
     confirm,
     cancel,

@@ -67,7 +67,7 @@ to WhatsApp and email.
 
 ## Current status
 
-Phases 1-9 are complete. What remains before a private test is provisioning, not code:
+Phases 1-11 are complete. What remains before a private test is provisioning, not code:
 a Vercel project, a Supabase project with `supabase/migrations/` applied
 (`npm run db:check` reports what is behind), a Firebase project, and a browser pass over
 both themes and voice.

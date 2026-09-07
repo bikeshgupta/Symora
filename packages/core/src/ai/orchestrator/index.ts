@@ -26,3 +26,10 @@ export {
   composeToolResult,
   type ComposedResponse,
 } from './response-composer';
+export {
+  detectSmallTalk,
+  composeSmallTalk,
+  capabilitySuggestions,
+  type SmallTalkKind,
+  type CapabilitySuggestion,
+} from './small-talk';

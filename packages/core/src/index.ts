@@ -37,7 +37,7 @@ export type { UsageSummary } from './domain/usage/usage-service';
 export type { DataExport, DeletionResult } from './domain/privacy/privacy-service';
 export type { PlannedNotification } from './domain/notifications/notification-planner';
 export type { NotificationInbox } from './domain/notifications/notification-service';
-export type { HomePayload, AttentionItem, HomeSuggestion } from './domain/home/home-service';
+export type { HomePayload, AttentionItem, HomeGreeting, HomeSuggestion } from './domain/home/home-service';
 export {
   buildTemporalAnchors,
   renderTemporalContext,

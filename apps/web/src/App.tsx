@@ -1,6 +1,6 @@
 import { useAuth } from '@/hooks/useAuth';
 import { LoginPage } from '@/pages/LoginPage';
-import { HomePage } from '@/pages/HomePage';
+import { AppShell } from '@/components/layout/AppShell';
 
 export function App() {
   const { user, loading, initError } = useAuth();
@@ -28,5 +28,5 @@ export function App() {
     );
   }
 
-  return user ? <HomePage /> : <LoginPage />;
+  return user ? <AppShell /> : <LoginPage />;
 }
