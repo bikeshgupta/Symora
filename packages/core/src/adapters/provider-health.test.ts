@@ -48,6 +48,42 @@ describe('isReachabilityFailure', () => {
     expect(isReachabilityFailure(error)).toBe(false);
   });
 
+  it('reads the SDK\'s own connection error, whose signal is one level down', () => {
+    // The exact shape the OpenAI SDK throws for a refused connection, verified against a
+    // real closed port. Its `name` is the bare 'Error', its `code` is undefined, and its
+    // message is the unhelpful "Connection error." — the ECONNREFUSED that identifies it
+    // sits on `cause`. Reading only the top of the chain missed the single case this
+    // whole mechanism exists for, and every mocked test still passed.
+    const sdkError = Object.assign(new Error('Connection error.'), {
+      status: undefined,
+      cause: Object.assign(
+        new Error('request to http://127.0.0.1:11434/v1/chat/completions failed, reason: connect ECONNREFUSED'),
+        { code: 'ECONNREFUSED' },
+      ),
+    });
+
+    expect(isReachabilityFailure(sdkError)).toBe(true);
+  });
+
+  it('finds a network code that only appears on the cause', () => {
+    // Isolates the cause walk: nothing at the top level says anything useful, so this
+    // fails unless the chain is followed. The SDK's current wording ("Connection error.")
+    // happens to be recognisable on its own, but wording is not a contract and the errno
+    // is — this is the durable signal.
+    const opaque = Object.assign(new Error('Request failed'), {
+      cause: Object.assign(new Error('upstream'), { code: 'ECONNREFUSED' }),
+    });
+
+    expect(isReachabilityFailure(opaque)).toBe(true);
+  });
+
+  it('does not loop forever on a self-referencing cause chain', () => {
+    const looped = new Error('nothing useful') as Error & { cause?: unknown };
+    looped.cause = looped;
+
+    expect(isReachabilityFailure(looped)).toBe(false);
+  });
+
   it('is false for nothing at all', () => {
     expect(isReachabilityFailure(null)).toBe(false);
     expect(isReachabilityFailure(undefined)).toBe(false);

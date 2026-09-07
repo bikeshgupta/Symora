@@ -447,3 +447,146 @@ describe('an unreachable endpoint fails fast', () => {
     expect(getProviderHealth().state).toBe('ready');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Against a real server
+// ---------------------------------------------------------------------------
+
+/**
+ * Everything above stubs the SDK, which means it never proves the one line the whole
+ * self-hosting feature rests on: that `AI_BASE_URL` actually decides where the request
+ * goes. Deleting `baseURL` from the client leaves every one of those tests green.
+ *
+ * So these run against a real HTTP server on a real port, with nothing mocked. It is an
+ * Ollama stand-in: same protocol, same shape of reply, no model.
+ */
+describe('talking to a real OpenAI-compatible server', () => {
+  let server: import('node:http').Server;
+  let port: number;
+  let received: { path: string; auth: string | undefined; body: Record<string, unknown> }[] = [];
+  let reply: (body: Record<string, unknown>) => { status: number; json: unknown };
+
+  beforeEach(async () => {
+    const { createServer } = await import('node:http');
+    received = [];
+    reply = () => ({
+      status: 200,
+      json: {
+        model: 'served-model',
+        choices: [
+          {
+            index: 0,
+            finish_reason: 'stop',
+            message: { role: 'assistant', content: 'from the server' },
+          },
+        ],
+        usage: { prompt_tokens: 11, completion_tokens: 3, total_tokens: 14 },
+      },
+    });
+
+    server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (chunk) => (raw += chunk));
+      req.on('end', () => {
+        const body = raw ? JSON.parse(raw) : {};
+        received.push({ path: req.url ?? '', auth: req.headers.authorization, body });
+        const answer = reply(body);
+        res.writeHead(answer.status, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(answer.json));
+      });
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    port = (server.address() as { port: number }).port;
+
+    process.env.AI_BASE_URL = `http://127.0.0.1:${port}/v1`;
+    process.env.AI_MODEL_CHEAP = 'served-model';
+    delete process.env.AI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    resetAiClient();
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('sends the request to AI_BASE_URL', async () => {
+    const result = await openAiProvider.complete({
+      tier: 'cheap',
+      messages: [{ role: 'user', content: 'hello' }],
+    });
+
+    expect(received).toHaveLength(1);
+    expect(received[0]!.path).toBe('/v1/chat/completions');
+    expect(received[0]!.body).toMatchObject({ model: 'served-model' });
+    expect(result.text).toBe('from the server');
+    expect(result.usage.totalTokens).toBe(14);
+  });
+
+  it('sends AI_API_KEY as a bearer token, so a proxy in front of Ollama can require it', async () => {
+    // Ollama has no auth of its own. This header is the whole mechanism for putting some
+    // in front of it without changing any Symora code.
+    process.env.AI_API_KEY = 'a-long-random-secret';
+    resetAiClient();
+
+    await openAiProvider.complete({ tier: 'cheap', messages: [{ role: 'user', content: 'hi' }] });
+
+    expect(received[0]!.auth).toBe('Bearer a-long-random-secret');
+  });
+
+  it('falls back to JSON mode against a server that rejects the tools parameter', async () => {
+    // What an Ollama model without tool-calling support actually does.
+    process.env.AI_MODEL_CHEAP = 'served-model-no-tools';
+    reply = (body) =>
+      'tools' in body
+        ? {
+            status: 400,
+            json: { error: { message: 'this model does not support tools', type: 'invalid_request_error' } },
+          }
+        : {
+            status: 200,
+            json: {
+              model: 'served-model-no-tools',
+              choices: [
+                {
+                  index: 0,
+                  finish_reason: 'stop',
+                  message: {
+                    role: 'assistant',
+                    content: JSON.stringify({ tool: 'create_task', args: { title: 'Buy milk' } }),
+                  },
+                },
+              ],
+            },
+          };
+
+    const result = await openAiProvider.complete({
+      tier: 'cheap',
+      messages: [{ role: 'user', content: 'buy milk' }],
+      tools: TOOLS,
+    });
+
+    expect(received).toHaveLength(2);
+    expect(received[1]!.body).not.toHaveProperty('tools');
+    expect(result.toolCalls).toEqual([
+      { id: 'json-mode', name: 'create_task', arguments: { title: 'Buy milk' } },
+    ]);
+  });
+
+  it('opens the circuit when nothing is listening on the port', async () => {
+    // The laptop-is-off case, end to end: a real connection to a real closed port.
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    resetProviderHealth();
+    resetAiClient();
+
+    const request = { tier: 'cheap' as const, messages: [{ role: 'user' as const, content: 'hi' }] };
+    await expect(openAiProvider.complete(request)).rejects.toThrow();
+
+    expect(getProviderHealth().state).toBe('unreachable');
+    // And the next turn does not wait for a second connection attempt.
+    await expect(openAiProvider.complete(request)).rejects.toThrow(/not responding/);
+
+    // Re-listen so afterEach's close() has something to close.
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  });
+});

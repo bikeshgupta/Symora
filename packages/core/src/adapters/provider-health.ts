@@ -62,26 +62,39 @@ export class ProviderUnavailableError extends Error {
  * Only connection-level failures, timeouts, rate limits and 5xx are worth backing off
  * from.
  */
+const NETWORK_CODE = /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|UND_ERR/i;
+const NETWORK_MESSAGE =
+  /connection error|fetch failed|network|socket hang up|timed out|timeout|aborted|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET/i;
+
 export function isReachabilityFailure(error: unknown): boolean {
-  if (!error) return false;
+  // Walk the cause chain. The OpenAI SDK wraps a refused connection in an
+  // APIConnectionError whose own `name` is the bare 'Error', whose `code` is undefined,
+  // and whose message is the unhelpful "Connection error." — the ECONNREFUSED that
+  // actually identifies it sits one level down on `cause`. Reading only the top of the
+  // chain missed the single case this whole mechanism exists for: a self-hosted endpoint
+  // that is switched off.
+  for (let current: unknown = error, depth = 0; current && depth < 5; depth += 1) {
+    const status = (current as { status?: unknown }).status;
+    if (typeof status === 'number') {
+      return status === 408 || status === 429 || status >= 500;
+    }
 
-  const status = (error as { status?: unknown }).status;
-  if (typeof status === 'number') {
-    return status === 408 || status === 429 || status >= 500;
+    const name = (current as { name?: unknown }).name;
+    if (typeof name === 'string' && /connection|timeout|abort/i.test(name)) return true;
+
+    const code = (current as { code?: unknown }).code;
+    if (typeof code === 'string' && NETWORK_CODE.test(code)) return true;
+
+    const constructorName = (current as { constructor?: { name?: unknown } }).constructor?.name;
+    if (typeof constructorName === 'string' && /connection|timeout/i.test(constructorName)) return true;
+
+    const message = current instanceof Error ? current.message : typeof current === 'string' ? current : '';
+    if (message && NETWORK_MESSAGE.test(message)) return true;
+
+    current = (current as { cause?: unknown }).cause;
   }
 
-  const name = (error as { name?: unknown }).name;
-  if (typeof name === 'string' && /connection|timeout|abort/i.test(name)) return true;
-
-  const code = (error as { code?: unknown }).code;
-  if (typeof code === 'string' && /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EAI_AGAIN|UND_ERR/i.test(code)) {
-    return true;
-  }
-
-  const message = error instanceof Error ? error.message : String(error);
-  return /fetch failed|network|socket hang up|timed out|timeout|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET/i.test(
-    message,
-  );
+  return false;
 }
 
 export interface ProviderHealthOptions {

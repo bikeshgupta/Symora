@@ -87,7 +87,17 @@ export default tseslint.config(
     // Node's globals, which the browser- and library-oriented configs above do not grant.
     files: ['scripts/**/*.{js,mjs}'],
     languageOptions: {
-      globals: { process: 'readonly', console: 'readonly', fetch: 'readonly', URL: 'readonly' },
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+        URL: 'readonly',
+        // score-model.mjs bounds each request itself rather than trusting a self-hosted
+        // endpoint to answer.
+        AbortController: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+      },
     },
   },
 );

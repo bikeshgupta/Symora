@@ -164,25 +164,13 @@ function mapFinishReason(reason: string | null | undefined): AICompletionResult[
 // JSON tool mode
 // ---------------------------------------------------------------------------
 
-/** The shape a JSON-mode reply must take. One tool, or none. */
-const JSON_TOOL_ENVELOPE = {
-  type: 'object',
-  properties: {
-    tool: {
-      type: ['string', 'null'],
-      description: 'The name of the single tool to call, or null to reply in plain text.',
-    },
-    args: { type: 'object', description: 'Arguments for that tool.' },
-    text: {
-      type: ['string', 'null'],
-      description: 'The plain-text reply, when no tool is called.',
-    },
-  },
-  required: ['tool'],
-} as const;
-
 /**
  * The instruction that replaces native tool calling.
+ *
+ * The envelope is described here in prose rather than also declared as a JSON schema
+ * object: `response_format` is set to `json_object` rather than `json_schema` because
+ * the former is far more widely supported among self-hosted servers, so a second
+ * machine-readable copy of the shape would never be sent anywhere and would only drift.
  *
  * Appended as a system message rather than folded into the caller's prompt so the
  * pipeline's own system prompt stays readable and provider-agnostic — this is a
