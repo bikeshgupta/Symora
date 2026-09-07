@@ -590,3 +590,91 @@ describe('talking to a real OpenAI-compatible server', () => {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   });
 });
+
+/**
+ * The failure that took the deployed app down: a model that answers slowly, or not at
+ * all, outliving the serverless function that is waiting for it. The request timeout was
+ * meant to prevent exactly that and did not, because the SDK applies it per attempt and
+ * retried twice by default — so a 12s timeout was really a 36s worst case, past the
+ * function's 30s ceiling. The platform killed the invocation, which meant no fallback to
+ * the rule parser, no recorded failure, no open circuit, and the next turn did it again.
+ */
+describe('one call, one attempt — the timeout has to mean what it says', () => {
+  let server: import('node:http').Server;
+  let attempts: number;
+  let hang: boolean;
+  let openSockets: import('node:net').Socket[] = [];
+
+  beforeEach(async () => {
+    const { createServer } = await import('node:http');
+    attempts = 0;
+    hang = true;
+    openSockets = [];
+
+    server = createServer((req, res) => {
+      attempts += 1;
+      req.resume();
+      if (hang) return; // never answers, like a machine under load
+      res.writeHead(500, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: { message: 'upstream is having a bad day' } }));
+    });
+    server.on('connection', (socket) => openSockets.push(socket));
+
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as { port: number }).port;
+
+    process.env.AI_BASE_URL = `http://127.0.0.1:${port}/v1`;
+    process.env.AI_MODEL_CHEAP = 'slow-model';
+    delete process.env.AI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    resetAiClient();
+  });
+
+  afterEach(async () => {
+    for (const socket of openSockets) socket.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('gives up at the timeout it was given, once', async () => {
+    const startedAt = Date.now();
+
+    await expect(
+      openAiProvider.complete({
+        tier: 'cheap',
+        messages: [{ role: 'user', content: 'hi' }],
+        timeoutMs: 300,
+      }),
+    ).rejects.toThrow();
+
+    const elapsed = Date.now() - startedAt;
+    // One attempt's worth of waiting, not three. The generous ceiling is for a slow CI
+    // box; the assertion that matters is that it is nowhere near 3 × 300ms.
+    expect(elapsed).toBeLessThan(900);
+    expect(attempts).toBe(1);
+  });
+
+  it('does not repeat a failed request behind the caller back', async () => {
+    // The SDK retries 5xx by default. Here that would spend the turn's whole budget on a
+    // server that has already said it cannot help; the pipeline has a better answer
+    // waiting — the rule-based parser — and gets to it in one round trip instead.
+    hang = false;
+
+    await expect(
+      openAiProvider.complete({ tier: 'cheap', messages: [{ role: 'user', content: 'hi' }] }),
+    ).rejects.toThrow();
+
+    expect(attempts).toBe(1);
+  });
+
+  it('honours AI_MAX_RETRIES when an operator asks for retries back', async () => {
+    hang = false;
+    process.env.AI_MAX_RETRIES = '1';
+    resetAiClient();
+
+    await expect(
+      openAiProvider.complete({ tier: 'cheap', messages: [{ role: 'user', content: 'hi' }] }),
+    ).rejects.toThrow();
+
+    expect(attempts).toBe(2);
+  });
+});

@@ -60,21 +60,47 @@ export function createRequest(init: TestRequestInit): VercelRequest {
 
 export function createResponse(): { res: VercelResponse; captured: TestResponse } {
   const captured: TestResponse = { status: 0, body: undefined, headers: {} };
+  // Node sends headers with the first body write and refuses a second one. The double
+  // used to accept any number of writes, quietly keeping the last — which is how a test
+  // could pass while production threw ERR_HTTP_HEADERS_SENT and took the invocation with
+  // it. A request that answered, then had a slow handler finish afterwards, is exactly
+  // that case.
+  let headersSent = false;
+
+  function write(apply: () => void) {
+    if (headersSent) {
+      throw Object.assign(new Error('Cannot set headers after they are sent to the client'), {
+        code: 'ERR_HTTP_HEADERS_SENT',
+      });
+    }
+    headersSent = true;
+    apply();
+  }
 
   const res = {
+    get headersSent() {
+      return headersSent;
+    },
     status(code: number) {
-      captured.status = code;
+      // After the response is sent, Node keeps the status it sent: assigning
+      // `statusCode` later is a silent no-op, not an error. The double does the same, so
+      // a late handler cannot rewrite an answer the caller already has.
+      if (!headersSent) captured.status = code;
       return this;
     },
     json(payload: unknown) {
       // Serialized on purpose, exactly as Vercel's res.json does. A value JSON cannot
       // represent — a BigInt, most likely, since money is computed in minor units —
       // must fail here rather than silently pass a test and 500 in production.
-      captured.body = JSON.parse(JSON.stringify(payload));
+      write(() => {
+        captured.body = JSON.parse(JSON.stringify(payload));
+      });
       return this;
     },
     send(payload: unknown) {
-      captured.body = payload;
+      write(() => {
+        captured.body = payload;
+      });
       return this;
     },
     setHeader(name: string, value: string) {

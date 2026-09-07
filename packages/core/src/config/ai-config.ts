@@ -98,6 +98,49 @@ export function getAiTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
 }
 
 /**
+ * How many times the SDK may repeat a failed request of its own accord.
+ *
+ * **Zero, and that is a fix rather than a preference.** The OpenAI SDK retries twice by
+ * default and applies `timeout` *per attempt*, so a 12s timeout was really a 36s worst
+ * case — past the serverless function's own ceiling. The platform then killed the
+ * invocation, which meant a raw 500 for the user, no fallback to the rule parser, and no
+ * failure recorded, so the circuit breaker never opened and the next turn did it again.
+ * Every chat turn died that way while every deterministic endpoint kept working.
+ *
+ * Retrying is also the wrong shape here: this layer already has a better answer than
+ * waiting — the rule-based parser — and a turn the user is watching should degrade in
+ * seconds rather than retry silently for half a minute. Raise it only with a request
+ * timeout small enough that attempts × timeout still fits the function's budget.
+ */
+export const DEFAULT_AI_MAX_RETRIES = 0;
+
+export function getAiMaxRetries(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.AI_MAX_RETRIES?.trim();
+  if (!raw) return DEFAULT_AI_MAX_RETRIES;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : DEFAULT_AI_MAX_RETRIES;
+}
+
+/**
+ * The whole turn's model budget, across every call it makes.
+ *
+ * `AI_REQUEST_TIMEOUT_MS` bounds one call; this bounds the turn. They differ because a
+ * turn is not always one call — interpreting pasted text extracts twice — and two calls
+ * that each honour a 12s timeout still exceed a 30s function. Whatever is left of this
+ * budget is what the next call is given, and when too little remains the model is
+ * skipped entirely and the rule parser answers. The user gets a real reply either way;
+ * that is the whole point of having a deterministic path.
+ *
+ * Keep it comfortably under `maxDuration` in vercel.json — the rest of the turn still
+ * has to write its messages and compose a response after the model answers.
+ */
+export const DEFAULT_AI_TURN_BUDGET_MS = 20_000;
+
+export function getAiTurnBudgetMs(env: NodeJS.ProcessEnv = process.env): number {
+  return readTimeoutMs(env.AI_TURN_BUDGET_MS, DEFAULT_AI_TURN_BUDGET_MS);
+}
+
+/**
  * How long the circuit stays open after the endpoint fails. See
  * adapters/provider-health.ts — this is the "your laptop is off" window, during which
  * turns go straight to the rule parser instead of waiting for a timeout each time.

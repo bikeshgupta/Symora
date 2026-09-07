@@ -24,6 +24,7 @@ import {
   getAiEndpointConfig,
   getAiModel,
   getAiCooldownMs,
+  getAiMaxRetries,
   readTimeoutMs,
   type AiToolMode,
 } from '../config/ai-config';
@@ -93,7 +94,14 @@ function getClient(): OpenAI {
     );
   }
 
-  client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
+  // maxRetries is explicit because the SDK's default of 2 silently triples the request
+  // timeout, and the timeout is what keeps a turn inside the function's budget
+  // (config/ai-config.ts § DEFAULT_AI_MAX_RETRIES).
+  client = new OpenAI({
+    apiKey: config.apiKey,
+    baseURL: config.baseUrl,
+    maxRetries: getAiMaxRetries(),
+  });
   clientBaseUrl = config.baseUrl;
   return client;
 }

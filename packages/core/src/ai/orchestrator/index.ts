@@ -33,3 +33,4 @@ export {
   type SmallTalkKind,
   type CapabilitySuggestion,
 } from './small-talk';
+export { startTurnBudget, MIN_MODEL_CALL_MS, type TurnBudget } from './turn-budget';

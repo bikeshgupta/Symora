@@ -12,6 +12,7 @@ export type ApiErrorCode =
   | 'NOT_FOUND'
   | 'VALIDATION_ERROR'
   | 'METHOD_NOT_ALLOWED'
+  | 'REQUEST_TIMEOUT'
   | 'INTERNAL_ERROR';
 
 const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
@@ -20,6 +21,7 @@ const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
   NOT_FOUND: 404,
   VALIDATION_ERROR: 422,
   METHOD_NOT_ALLOWED: 405,
+  REQUEST_TIMEOUT: 504,
   INTERNAL_ERROR: 500,
 };
 

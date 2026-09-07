@@ -27,6 +27,8 @@ import {
   DEGRADED_NO_INTENT_TEXT,
   QUOTA_EXHAUSTED_NO_INTENT_TEXT,
   getAiMode,
+  getAiTurnBudgetMs,
+  startTurnBudget,
   usageService,
   memoryService,
   needsRelativeDateClarification,
@@ -124,6 +126,14 @@ export default withApiHandler(async (req, res, ctx) => {
   }
   const aiMode = quotaExhausted ? 'offline' : configuredMode;
 
+  // What this turn may spend on the model, across every call it makes. A turn that runs
+  // past the function's ceiling is killed by the platform, and a killed turn is the one
+  // outcome with no fallback: no rule-parser answer, no recorded failure, no open
+  // circuit — so the next turn repeats it. Counting the time is what lets the pipeline
+  // choose the deterministic path before that happens
+  // (packages/core/src/ai/orchestrator/turn-budget.ts).
+  const budget = startTurnBudget(getAiTurnBudgetMs());
+
   // Dates the model is allowed to use, computed here rather than by the model.
   const temporal = buildTemporalAnchors(now, ctx.user.timezone);
   const toolCtx = {
@@ -214,6 +224,7 @@ export default withApiHandler(async (req, res, ctx) => {
       : await extractIntentResilient(openAiProvider, body.text, language, {
           memories,
           temporal,
+          timeoutMs: budget.remainingMs(),
           onProviderFailure: (error) =>
             ctx.logger.warn('AI provider failed; fell back to the rule-based parser.', {
               cause: error instanceof Error ? error.message : String(error),
@@ -266,12 +277,25 @@ export default withApiHandler(async (req, res, ctx) => {
             ctx.user.timezone,
           )
         : [];
+    // The second call of the turn, and the one the budget exists for: two calls that
+    // each honour the request timeout still add up to more than the function has. When
+    // the first call spent the budget, the pasted text is parsed by the rule parser and
+    // the reply says the understanding was degraded — rather than the platform killing
+    // the turn and the user getting nothing at all.
+    const nestedBudgetSpent = aiMode === 'ai' && !budget.allows();
+    if (nestedBudgetSpent) {
+      ctx.logger.warn('Turn budget spent before interpreting pasted text; used the rule-based parser.');
+    }
     const nested =
-      aiMode === 'offline'
-        ? { ...extractIntentOffline(pastedText, language, { temporal }), degraded: false }
+      aiMode === 'offline' || nestedBudgetSpent
+        ? {
+            ...extractIntentOffline(pastedText, language, { temporal }),
+            degraded: nestedBudgetSpent,
+          }
         : await extractIntentResilient(openAiProvider, pastedText, language, {
             memories: pastedMemories,
             temporal,
+            timeoutMs: budget.remainingMs(),
             onProviderFailure: (error) =>
               ctx.logger.warn('AI provider failed on pasted text; fell back to the rule-based parser.', {
                 cause: error instanceof Error ? error.message : String(error),

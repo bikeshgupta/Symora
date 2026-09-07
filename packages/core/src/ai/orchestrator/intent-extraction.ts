@@ -56,6 +56,12 @@ export interface ExtractIntentOptions {
    * asking again, which is Phase 3's acceptance criterion.
    */
   memories?: MemoryContextEntry[];
+  /**
+   * What this one call may spend. Left unset it is the configured request timeout; the
+   * chat route passes what remains of the turn's budget, so the second call of a
+   * two-call turn cannot outlive the serverless function (orchestrator/turn-budget.ts).
+   */
+  timeoutMs?: number;
 }
 
 export async function extractIntent(
@@ -77,6 +83,7 @@ export async function extractIntent(
       { role: 'user', content: text },
     ],
     tools: buildToolDefinitions(),
+    timeoutMs: options.timeoutMs,
   });
 
   const call = result.toolCalls[0];

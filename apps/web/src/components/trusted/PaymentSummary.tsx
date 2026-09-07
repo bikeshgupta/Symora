@@ -52,25 +52,42 @@ export function PaymentSummary({ payments }: { payments: HomePayload['payments']
           No recurring payments tracked yet.
         </p>
       ) : (
-        <dl className="mt-4 flex flex-wrap gap-x-10 gap-y-4">
+        /* Two columns: the pair is a comparison — what the month needs against what is
+           still owed — and stacking them loses that. Currencies get their own cells; a
+           total across two of them would be an implicit conversion. */
+        <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4">
           {payments.requiredByCurrency.map((line) => (
-            <div key={`required-${line.currency}`}>
-              <dt className="text-caption text-text-muted">Needed this month</dt>
-              <dd className="mt-1 font-numeric text-amount tabular-nums text-text-primary">
-                {line.currency} {line.totalFormatted}
-              </dd>
-            </div>
+            <Total key={`required-${line.currency}`} label="Needed this month" line={line} />
           ))}
           {payments.outstandingByCurrency.map((line) => (
-            <div key={`outstanding-${line.currency}`}>
-              <dt className="text-caption text-text-muted">Still to pay</dt>
-              <dd className="mt-1 font-numeric text-amount tabular-nums text-text-primary">
-                {line.currency} {line.totalFormatted}
-              </dd>
-            </div>
+            <Total key={`outstanding-${line.currency}`} label="Still to pay" line={line} />
           ))}
         </dl>
       )}
     </CardShell>
+  );
+}
+
+/**
+ * One total. The currency is a label, not part of the number: at amount size it competes
+ * with the digits, and the digits are what the user came to read.
+ */
+function Total({
+  label,
+  line,
+}: {
+  label: string;
+  line: { currency: string; totalFormatted: string };
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-caption text-text-muted">{label}</dt>
+      <dd className="mt-1 flex items-baseline gap-1">
+        <span className="text-caption text-text-muted">{line.currency}</span>
+        <span className="font-numeric text-amount tabular-nums text-text-primary">
+          {line.totalFormatted}
+        </span>
+      </dd>
+    </div>
   );
 }

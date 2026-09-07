@@ -33,6 +33,22 @@ type TabId = (typeof TABS)[number]['id'];
 export function AppShell() {
   const [tab, setTab] = useState<TabId>('chat');
   const chat = useChat();
+  /**
+   * What a tapped suggestion put in the composer. It lives here rather than in the chat
+   * screen because Today taps into it too: tapping an overdue payment should open the
+   * conversation with the sentence already written, not execute anything — a shortcut
+   * into the pipeline can never skip a confirmation gate
+   * (.claude/rules/design-system.md, SuggestionChip).
+   *
+   * The nonce is what makes tapping the same row twice work: the composer is remounted
+   * with the text, and an identical string alone would not change its key.
+   */
+  const [prefill, setPrefill] = useState<{ text: string; nonce: number } | null>(null);
+
+  function ask(text: string) {
+    setPrefill((prev) => ({ text, nonce: (prev?.nonce ?? 0) + 1 }));
+    setTab('chat');
+  }
 
   return (
     <div className="flex h-dvh flex-col bg-background">
@@ -72,7 +88,11 @@ export function AppShell() {
       </header>
 
       <main className="min-h-0 flex-1">
-        {tab === 'chat' ? <ChatPage chat={chat} /> : <TodayPage />}
+        {tab === 'chat' ? (
+          <ChatPage chat={chat} prefill={prefill} onFill={ask} />
+        ) : (
+          <TodayPage onAsk={ask} />
+        )}
       </main>
 
       <nav

@@ -27,6 +27,7 @@ OpenAI-compatible endpoint — Ollama on your own machine included. See
 | 9 — Testing / hardening | Done | 15–25h |
 | 10 — Self-hosted model + model scorecard | Done | — |
 | 11 — Two screens, and an answer to "hello" | Done | — |
+| 12 — A turn that always answers | Done | — |
 
 Total target: ~110–120h.
 
@@ -725,6 +726,61 @@ Still open:
 
 - [ ] Both themes are exercised in a headless browser against stubbed API data, not in a
       real one against a real deployment. The Phase 6 line above stands
+
+---
+
+## Phase 12 — A turn that always answers — Done
+
+The first deployed test found it: every /api/chat turn came back as a platform error
+page while every deterministic endpoint kept working. Not a configuration problem — a
+budget one.
+
+Root cause:
+
+- [x] The OpenAI SDK retries twice by default and applies `timeout` **per attempt**, so
+      the 12s request timeout — chosen precisely to stay under the function's 30s
+      ceiling — was really a 36s worst case. The platform killed the invocation, and a
+      killed invocation takes every fallback with it: no rule-parser reply, no recorded
+      failure, no open circuit. So the next turn did exactly the same thing, which is why
+      it looked like nothing worked rather than like one slow request.
+
+Fixed:
+
+- [x] `AI_MAX_RETRIES`, default 0 — the SDK no longer repeats a request behind the
+      caller's back. Proved against a real HTTP server: one attempt, and two when an
+      operator asks for one retry
+- [x] A per-turn budget (`ai/orchestrator/turn-budget.ts`, `AI_TURN_BUDGET_MS`, default
+      20s). The request timeout bounds one call; this bounds the turn, which matters
+      because interpreting pasted text extracts twice. What is left is handed to the next
+      call, and when too little remains the rule parser answers instead
+- [x] A request deadline in `withApiHandler` (`API_REQUEST_TIMEOUT_MS`, default 25s):
+      anything that hangs now returns a 504 in the standard error contract, with a
+      request id that ties it to a log line. The net under everything else
+- [x] A handler that finishes after the deadline no longer rejects into nothing. The test
+      double now refuses a second write and ignores a late status, the way Node does —
+      it used to accept both, so a double-answer could pass a test and crash production
+- [x] The chat error card shows the code and request id under the message, because "it
+      doesn't work" and "REQUEST_TIMEOUT · request 7f0c…" are different bug reports
+- [x] The chat screen says when the model is `unreachable` rather than `offline` — a
+      machine to switch on, not an env var to fill in
+
+UI, from the same session's feedback:
+
+- [x] The transcript is anchored to the bottom. A conversation grows upward from where
+      you type; starting it at the top left a screen of dead space above the composer
+- [x] A confirmation card no longer repeats its own question as a message above itself
+- [x] Today: a hero line (date, greeting, what needs you), the contextual chips promoted
+      to the top, section labels dropped where they duplicated a card heading, and the
+      month's two totals side by side as the comparison they are
+- [x] Tapping a row in Needs Attention opens the chat with the sentence written — a
+      shortcut into the pipeline, never past its confirmation gate
+
+Still open:
+
+- [ ] Whether this was the *only* cause of the deployed failure is not proven from here:
+      the environment cannot reach the deployment, and Vercel's logs are where the answer
+      is. What is proven is that a slow or dead model can no longer take a turn down, and
+      that whatever fails next says so with a code and a request id
 
 ---
 
