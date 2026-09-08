@@ -39,12 +39,14 @@ function CapabilityCard({
     <button
       type="button"
       onClick={() => onSelect(capability.prompt)}
-      className="group flex min-h-[44px] w-full items-start gap-3 rounded-md border border-border bg-surface p-4 text-left transition-colors hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+      className="group flex min-h-[44px] w-full items-center gap-3 rounded-md border border-border bg-surface px-3 py-2.5 text-left transition-colors hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
     >
-      <Icon size={18} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+      <Icon size={16} className="shrink-0 text-primary" aria-hidden="true" />
       <span className="min-w-0">
-        <span className="block text-body-sm font-medium text-text-primary">{capability.label}</span>
-        <span className="mt-1 block truncate text-caption text-text-muted">
+        <span className="block text-body-sm font-medium leading-tight text-text-primary">
+          {capability.label}
+        </span>
+        <span className="mt-0.5 block truncate text-caption leading-tight text-text-muted">
           &ldquo;{capability.prompt}&rdquo;
         </span>
       </span>
@@ -78,27 +80,26 @@ export function ChatEmptyState({
   const capabilities = capabilitySuggestions(me?.preferredLanguage ?? 'en');
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col items-center px-1 py-10 text-center sm:py-16">
-      <SymoraMark size="lg" />
+    <div className="mx-auto flex w-full max-w-2xl flex-col items-center px-1 py-4 text-center sm:py-10">
+      <SymoraMark size="md" />
 
-      <h1 className="mt-5 text-display text-text-primary">
+      <h1 className="mt-3 text-title text-text-primary">
         {greeting ? `${GREETING_WORD[greeting.partOfDay]}${firstName ? `, ${firstName}` : ''}` : 'Hello'}
       </h1>
-      <p className="mt-2 text-body text-text-muted">What can I help you with today?</p>
-      <p className="mt-1 text-caption text-text-muted">
-        Type, paste or speak — English, Hindi or Hinglish.
+      <p className="mt-1 text-body-sm text-text-muted">
+        What can I help you with? English, Hindi or Hinglish.
       </p>
 
-      <div className="mt-8 grid w-full gap-3 sm:grid-cols-2">
+      <div className="mt-5 grid w-full gap-2 sm:grid-cols-2">
         {capabilities.map((capability) => (
           <CapabilityCard key={capability.id} capability={capability} onSelect={onSelect} />
         ))}
       </div>
 
       {suggestions.length > 0 && (
-        <div className="mt-8 w-full">
+        <div className="mt-5 w-full">
           <p className="text-caption text-text-muted">Picking up where you are</p>
-          <div className="mt-3 flex flex-wrap justify-center gap-2">
+          <div className="mt-2 flex flex-wrap justify-center gap-2">
             {suggestions.map((suggestion) => (
               <SuggestionChip
                 key={suggestion.id}

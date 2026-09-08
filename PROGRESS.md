@@ -29,6 +29,7 @@ OpenAI-compatible endpoint — Ollama on your own machine included. See
 | 11 — Two screens, and an answer to "hello" | Done | — |
 | 12 — A turn that always answers | Done | — |
 | 13 — Gemini, and a model request only when needed | Done | — |
+| 14 — The bottom edge belongs to the composer | Done | — |
 
 Total target: ~110–120h.
 
@@ -831,6 +832,32 @@ Still open:
 - [ ] The escalation bar is one number (`CLEAR_RULE_MATCH`) and a small read-only set.
       Whether it is in the right place is a question for real usage — the corpus says
       what the parser scores, not what users then had to rephrase.
+
+---
+
+## Phase 14 — The bottom edge belongs to the composer — Done
+
+Three things were competing for the bottom of a phone screen: the composer, a standing
+hint, and a tab bar. Only one of them is used every time the app is opened.
+
+- [x] The tab bar is gone. Screens are swiped between on touch — left for Today, right
+      for Chat (`hooks/useHorizontalSwipe.ts`). The gesture only fires when it is clearly
+      sideways, long enough to be deliberate, started away from the browser's own edge
+      gestures, and not started on a text field, so it cannot fight scrolling or a caret
+      drag. Nothing calls preventDefault; vertical scrolling stays the browser's
+- [x] Pointer devices keep the segmented control in the header: a trackpad has no
+      reliable thumb swipe, and a screen nobody can reach is worse than a control nobody
+      needs
+- [x] Screen-reader and keyboard users get the same two destinations as visually-hidden
+      buttons that appear on focus. A screen reader's own gestures take precedence over
+      the page's, so swipe-only navigation would have left Today unreachable on a phone
+- [x] "Nothing is saved until you confirm." no longer sits under every screen forever.
+      It was true and, printed permanently, unread — and the promise is kept by the
+      ConfirmationCard, which appears when something is actually about to be written.
+      The line under the composer now speaks only during voice input or an error
+- [x] The empty state is tighter — smaller mark and heading, single-line capability rows,
+      less air between them — so all five fit above the composer on a phone without
+      scrolling
 
 ---
 

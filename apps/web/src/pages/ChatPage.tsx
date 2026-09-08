@@ -62,14 +62,14 @@ export function ChatPage({
               onSelect={onFill}
             />
           ) : (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-5">
               {entries.map((entry, index) => {
                 const draft = draftOf(entry);
                 const isLast = index === entries.length - 1;
                 const showsConfirmation = isLast && pendingConfirmation !== null;
 
                 return (
-                  <div key={entry.message.id} className="flex flex-col gap-4">
+                  <div key={entry.message.id} className="flex flex-col gap-3">
                     {/* The confirmation card's title *is* the reply — composeConfirmation
                         sends the same question as the message text so a transcript-only
                         surface still reads. Showing both says it twice. */}
@@ -186,8 +186,8 @@ function ModelStatusStrip({
         : 'No AI model configured — Symora is using its built-in parser. Keep requests close to the examples.';
 
   return (
-    <div className="border-t border-border bg-surface-raised px-4 py-2 sm:px-6">
-      <p className="mx-auto flex max-w-3xl items-center gap-2 text-caption text-text-muted">
+    <div className="border-t border-border bg-surface-raised px-4 py-1.5 sm:px-6">
+      <p className="mx-auto flex max-w-3xl items-center gap-2 text-caption leading-tight text-text-muted">
         <Icon size={14} className="shrink-0" aria-hidden="true" />
         {message}
       </p>

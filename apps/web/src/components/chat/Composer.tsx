@@ -101,9 +101,9 @@ export function Composer({
 
   return (
     <div className="border-t border-border bg-background/90 backdrop-blur">
-      <div className="mx-auto w-full max-w-3xl px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-3 sm:px-6">
+      <div className="mx-auto w-full max-w-3xl px-3 pb-[max(env(safe-area-inset-bottom),10px)] pt-2 sm:px-6">
         {fromPaste && (
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-border bg-surface-raised py-1 pl-3 pr-1 text-caption text-text-muted">
+          <div className="mb-1.5 inline-flex items-center gap-2 rounded-full border border-border bg-surface-raised py-1 pl-3 pr-1 text-caption text-text-muted">
             Reading this as something you were sent
             <button
               type="button"
@@ -118,7 +118,7 @@ export function Composer({
 
         <form
           onSubmit={handleSubmit}
-          className="flex items-end gap-2 rounded-xl border border-border bg-surface p-2 shadow-sm focus-within:border-primary"
+          className="flex items-end gap-1 rounded-xl border border-border bg-surface p-1.5 shadow-sm focus-within:border-primary"
         >
           <label htmlFor="composer" className="sr-only">
             Message Symora
@@ -141,7 +141,7 @@ export function Composer({
             placeholder={voice.state === 'recording' ? 'Listening…' : 'Message Symora…'}
             className={cn(
               // The height ceiling is applied in the effect above, in pixels.
-              'flex-1 resize-none overflow-y-auto bg-transparent px-2 py-2 text-body text-text-primary',
+              'flex-1 resize-none overflow-y-auto bg-transparent px-2 py-2.5 text-body text-text-primary',
               'placeholder:text-text-muted focus-visible:outline-none disabled:opacity-50',
             )}
           />
@@ -153,7 +153,7 @@ export function Composer({
               disabled={busy && voice.state !== 'recording'}
               aria-label={voice.state === 'recording' ? 'Stop recording' : 'Record a voice message'}
               className={cn(
-                'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors',
+                'flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors',
                 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
                 voice.state === 'recording'
                   ? 'bg-overdue-surface text-overdue'
@@ -170,7 +170,7 @@ export function Composer({
             disabled={busy || !text.trim()}
             aria-label="Send"
             className={cn(
-              'flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground',
+              'flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground',
               'transition-colors hover:bg-primary-hover disabled:opacity-40',
               'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
             )}
@@ -179,23 +179,29 @@ export function Composer({
           </button>
         </form>
 
-        <p
-          className={cn(
-            'mt-2 min-h-[20px] text-center text-caption',
-            voice.error && voice.state === 'idle' ? 'text-overdue' : 'text-text-muted',
-          )}
-          aria-live="polite"
-        >
-          {voice.state === 'recording'
-            ? `Listening — press stop when you're done. You'll see what Symora heard before anything happens.${
-                voice.usesBrowserRecognition ? ' Your browser is doing the listening, on this device.' : ''
-              }`
-            : voice.state === 'transcribing'
-              ? 'Working out what you said…'
-              : voice.error
-                ? voice.error
-                : 'Nothing is saved until you confirm.'}
-        </p>
+        {/*
+          Only speaks when it has something to say. The standing "nothing is saved until
+          you confirm" line was true and, printed under every screen forever, invisible —
+          a permanent strip of a phone screen spent on a sentence nobody read after the
+          first day. The promise itself is not weakened by removing it: it is kept by the
+          ConfirmationCard, which appears at the moment something is about to be written
+          and cannot be skipped.
+        */}
+        {(voice.state === 'recording' || voice.state === 'transcribing' || voice.error) && (
+          <p
+            className={cn(
+              'mt-1.5 text-center text-caption',
+              voice.error && voice.state === 'idle' ? 'text-overdue' : 'text-text-muted',
+            )}
+            aria-live="polite"
+          >
+            {voice.state === 'recording'
+              ? "Listening — press stop when you're done."
+              : voice.state === 'transcribing'
+                ? 'Working out what you said…'
+                : voice.error}
+          </p>
+        )}
       </div>
     </div>
   );

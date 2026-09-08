@@ -1,15 +1,15 @@
 import { useState } from 'react';
-import { LayoutList, MessageSquare } from 'lucide-react';
 import { SymoraMark } from '@/components/chat/SymoraMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { ChatPage } from '@/pages/ChatPage';
 import { TodayPage } from '@/pages/TodayPage';
 import { useChat } from '@/hooks/useChat';
+import { useHorizontalSwipe } from '@/hooks/useHorizontalSwipe';
 import { cn } from '@/lib/cn';
 
 const TABS = [
-  { id: 'chat', label: 'Chat', icon: MessageSquare },
-  { id: 'today', label: 'Today', icon: LayoutList },
+  { id: 'chat', label: 'Chat' },
+  { id: 'today', label: 'Today' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -29,6 +29,13 @@ type TabId = (typeof TABS)[number]['id'];
  * The frame itself is fixed to the viewport (`h-dvh`, no page scroll) and each screen
  * scrolls inside it. That is what lets the composer sit at the bottom of the chat screen
  * on a phone without the browser chrome pushing it off.
+ *
+ * On a phone the screens are swiped between rather than tabbed: a permanent bottom bar
+ * spends a strip of a small screen every second of the day on a control used a few times
+ * a day, and below the composer it competed with the one thing that should own the
+ * bottom edge. Pointer devices keep the segmented control in the header, because a
+ * trackpad has no reliable equivalent of a thumb swipe and a screen nobody can reach is
+ * worse than a control nobody needs.
  */
 export function AppShell() {
   const [tab, setTab] = useState<TabId>('chat');
@@ -50,6 +57,13 @@ export function AppShell() {
     setTab('chat');
   }
 
+  const swipe = useHorizontalSwipe({
+    // Left moves forward through the screens, right moves back — the order they sit in
+    // TABS, which is also the order the header shows them.
+    onSwipeLeft: () => setTab('today'),
+    onSwipeRight: () => setTab('chat'),
+  });
+
   return (
     <div className="flex h-dvh flex-col bg-background">
       <header className="shrink-0 border-b border-border bg-background/90 backdrop-blur">
@@ -59,8 +73,8 @@ export function AppShell() {
             <span className="text-heading text-text-primary">Symora</span>
           </div>
 
-          {/* On a wide screen the switch lives in the header; on a phone it is the bottom
-              bar below, where a thumb can reach it. Only one is ever visible. */}
+          {/* Pointer devices only. A phone swipes instead — see the swipe handler on
+              <main> below. */}
           <nav aria-label="Screens" className="hidden sm:flex">
             <div className="flex gap-1 rounded-full border border-border bg-surface-raised p-1">
               {TABS.map(({ id, label }) => (
@@ -83,11 +97,31 @@ export function AppShell() {
             </div>
           </nav>
 
+          {/*
+            The same two destinations for anyone who cannot swipe. A screen reader's own
+            gestures take precedence over the page's, so a phone user on VoiceOver or
+            TalkBack would otherwise have no way at all to reach Today; a keyboard user in
+            a narrow window is in the same position. These are invisible until focused,
+            so the screen stays as uncluttered as it looks.
+          */}
+          <nav aria-label="Screens" className="sm:hidden">
+            {TABS.filter(({ id }) => id !== tab).map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTab(id)}
+                className="sr-only rounded-full px-4 py-2 text-body-sm text-text-primary focus:not-sr-only focus:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+              >
+                Go to {label}
+              </button>
+            ))}
+          </nav>
+
           <ThemeToggle />
         </div>
       </header>
 
-      <main className="min-h-0 flex-1">
+      <main className="min-h-0 flex-1" {...swipe}>
         {tab === 'chat' ? (
           <ChatPage chat={chat} prefill={prefill} onFill={ask} />
         ) : (
@@ -95,29 +129,6 @@ export function AppShell() {
         )}
       </main>
 
-      <nav
-        aria-label="Screens"
-        className="shrink-0 border-t border-border bg-background pb-[env(safe-area-inset-bottom)] sm:hidden"
-      >
-        <div className="flex">
-          {TABS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setTab(id)}
-              aria-current={tab === id ? 'page' : undefined}
-              className={cn(
-                'flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 transition-colors',
-                'focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
-                tab === id ? 'text-primary' : 'text-text-muted',
-              )}
-            >
-              <Icon size={20} aria-hidden="true" />
-              <span className="text-caption">{label}</span>
-            </button>
-          ))}
-        </div>
-      </nav>
     </div>
   );
 }
