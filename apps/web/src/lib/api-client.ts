@@ -51,7 +51,9 @@ function describeNonJsonResponse(status: number): { code: string; message: strin
   if (status >= 500) {
     return {
       code: 'SERVER_ERROR',
-      message: "Symora's server couldn't complete that. It usually means the deployment is missing its Supabase, Firebase or AI configuration.",
+      message:
+        "Symora's server didn't finish that — it failed or ran out of time before answering. " +
+        'The connection check under You says which part is at fault.',
     };
   }
   return { code: 'UNEXPECTED_RESPONSE', message: 'Symora got an unexpected reply from its server.' };

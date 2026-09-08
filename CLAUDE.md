@@ -67,7 +67,7 @@ to WhatsApp and email.
 
 ## Current status
 
-Phases 1-14 are complete. What remains before a private test is provisioning, not code:
+Phases 1-15 are complete. What remains before a private test is provisioning, not code:
 a Vercel project, a Supabase project with `supabase/migrations/` applied
 (`npm run db:check` reports what is behind), a Firebase project, and a browser pass over
 both themes and voice.
@@ -173,7 +173,7 @@ docs/architecture/     architecture notes and ADRs
 
 ## API groups
 
-`/api/me`, `/api/chat`, `/api/memories`, `/api/commitments`, `/api/tasks`,
+`/api/health`, `/api/me`, `/api/chat`, `/api/memories`, `/api/commitments`, `/api/tasks`,
 `/api/reminders`, `/api/finance`, `/api/drafts`, `/api/home`, `/api/voice/transcribe`,
 `/api/notifications`, `/api/usage`, `/api/privacy/export`, `/api/privacy/delete`.
 

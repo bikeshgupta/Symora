@@ -1,4 +1,6 @@
-export { getSupabaseServiceClient } from './supabase-client';
+export { getSupabaseServiceClient, createTimedFetch } from './supabase-client';
+export * as healthRepository from './health-repository';
+export { PROBED_TABLES, type ProbeResult, type TableProbe } from './health-repository';
 export {
   getOrCreateUserByFirebaseUid,
   getUserById,

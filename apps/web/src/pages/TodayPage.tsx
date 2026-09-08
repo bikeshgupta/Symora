@@ -8,6 +8,7 @@ import { NotificationsPanel } from '@/components/NotificationsPanel';
 import { CommitmentsPanel } from '@/components/CommitmentsPanel';
 import { FinancePanel } from '@/components/FinancePanel';
 import { DraftPanel } from '@/components/DraftPanel';
+import { HealthPanel } from '@/components/HealthPanel';
 import { MemoryPanel } from '@/components/MemoryPanel';
 import { PrivacyPanel } from '@/components/PrivacyPanel';
 import { useAuth } from '@/hooks/useAuth';
@@ -193,6 +194,7 @@ export function TodayPage({ onAsk }: { onAsk: (text: string) => void }) {
           <>
             <MemoryPanel />
             <PrivacyPanel />
+            <HealthPanel />
             <CardShell as="section" aria-labelledby="appearance-heading">
               <h2 id="appearance-heading" className="text-heading text-text-primary">
                 Appearance and account

@@ -8,6 +8,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+import health from './health';
 import me from './me';
 import chat from './chat';
 import memoriesCollection from './memories-collection';
@@ -37,6 +38,7 @@ interface Route {
 }
 
 const ROUTES: Route[] = [
+  { segments: ['health'], handler: health },
   { segments: ['me'], handler: me },
   { segments: ['chat'], handler: chat },
 

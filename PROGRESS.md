@@ -30,6 +30,7 @@ OpenAI-compatible endpoint — Ollama on your own machine included. See
 | 12 — A turn that always answers | Done | — |
 | 13 — Gemini, and a model request only when needed | Done | — |
 | 14 — The bottom edge belongs to the composer | Done | — |
+| 15 — Bound the database, and say what is broken | Done | — |
 
 Total target: ~110–120h.
 
@@ -858,6 +859,46 @@ hint, and a tab bar. Only one of them is used every time the app is opened.
 - [x] The empty state is tighter — smaller mark and heading, single-line capability rows,
       less air between them — so all five fit above the composer on a phone without
       scrolling
+
+---
+
+## Phase 15 — Bound the database, and say what is broken — Done
+
+A second deployed failure, and the error card was the clue: `SERVER_ERROR` with **no
+request id**. The one error contract always carries a request id, so its absence meant
+our own handler never ran — the invocation was being killed before it could answer, and
+the request deadline added in Phase 12 had not fired either.
+
+- [x] `supabase-js` applies no timeout of its own, which made a database call the last
+      unbounded wait in the stack. A paused project, a wrong `SUPABASE_URL` or a dropped
+      connection produced a request that never settled; the platform killed the function
+      and returned its own error page — no code, no request id, nothing anyone could act
+      on — and *every* route that touches the database failed that way at once, which is
+      why it read as "the whole app is broken"
+- [x] Every database request now has a deadline (`SUPABASE_REQUEST_TIMEOUT_MS`, default
+      8s), and a hung one becomes an ordinary error the middleware reports properly. The
+      caller's own abort signal is preserved rather than replaced — supabase-js exposes
+      `.abortSignal()`, and dropping it would be a worse bug than the one being fixed
+- [x] `GET /api/health` reports which dependency is answering: the database (`ok`,
+      `schema_incomplete`, `unreachable`), and the model layer's mode, status and
+      provider. Authenticated, and states only — never a table name, a URL or a driver
+      message; those go to the log
+- [x] It deliberately does not use `withApiHandler`. That middleware resolves the caller
+      to a `users.id` first, which is itself a database read — so a broken database would
+      have failed the one endpoint whose job is to say the database is broken
+- [x] The query lives in `repositories/health-repository.ts`, because that is where
+      queries live. `audit_events` is deliberately not probed: the append-only guard works
+      by refusing any query to it outside its own repository, and a diagnostic is not a
+      good enough reason to punch a hole in that. The guard caught the first draft
+- [x] A **Connection check** card under Today → You runs it from the phone, which is
+      where someone looking at a broken app actually is, and says what to go and change
+
+Still open:
+
+- [ ] Whether an unbounded database call was *the* cause of the deployed failure is still
+      not proven from here — the environment cannot reach the deployment. What is now
+      true is that no wait in the request path is unbounded, and that the connection check
+      names the faulty dependency without needing the platform's logs.
 
 ---
 
